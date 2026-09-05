@@ -6229,7 +6229,7 @@
   // دیدهٔ بازارِ TSETMC یک فایلِ بزرگ است (چند مگابایت)، پس دیر به دیر گرفته
   // می‌شود و فقط نتیجهٔ خلاصه‌شده در حافظه می‌ماند، نه خودِ پاسخ.
   const BOURSE_REFRESH_MS = 15 * 60 * 1000;
-  let bourseRows = [], bourseIndex = null, bourseAt = 0, bourseError = '';
+  let bourseRows = [], bourseIndex = null, bourseAt = 0, bourseError = '', bourseLoading = false;
 
   // شاخص جدا گرفته می‌شود: اگر یکی نیامد، آن یکی نباید از دست برود
   async function loadBourseIndex() {
@@ -6294,6 +6294,16 @@
     return c;
   }
 
+  // اسکلت به‌جای اسپینر: شکلِ چیزی که می‌آید را از قبل نشان می‌دهد و
+  // ارتفاعِ کارت را رزرو می‌کند تا با رسیدنِ داده صفحه نپرد.
+  function skeletonRows(n) {
+    const box = el('div', 'sk-box');
+    box.setAttribute('aria-label', 'در حال خواندن');
+    box.setAttribute('role', 'status');
+    for (let i = 0; i < n; i++) box.append(el('span', 'sk-row'));
+    return box;
+  }
+
   function buildBourseCard() {
     const tradeAt = Bourse.lastTradeAt(bourseRows) || bourseIndex?.at || '';
     // تاریخِ معاملاتی مهم‌تر از ساعتِ گرفتنِ فایل است: جمعه که باز کنی، عددها
@@ -6305,6 +6315,7 @@
     card.classList.add('tint-blue');
 
     if (!bourseRows.length) {
+      if (bourseLoading) { card.append(skeletonRows(5)); return card; }
       const why = el('div', 'kiosk-empty');
       why.append(document.createTextNode(bourseError || 'هنوز چیزی خوانده نشده.'));
       const grant = el('button', 'btn btn-ghost btn-sm', 'دادن دسترسی و امتحان دوباره');
@@ -6376,7 +6387,21 @@
   // هر صندوق یک درخواستِ تاریخچه لازم دارد، پس فهرست کوتاه است و روزی یک بار
   // خوانده می‌شود. کدِ نماد فقط یک بار جست‌وجو و برای همیشه ذخیره می‌شود.
   const FUNDS_REFRESH_MS = 6 * 3600 * 1000;
-  let fundRows = [], fundsAt = 0, fundsError = '', fundPeriod = 'm1';
+  let fundRows = [], fundsAt = 0, fundsError = '', fundPeriod = 'm1', fundsLoading = false;
+
+  // موازی، ولی با سقف — نه حلقهٔ پیاپی، نه هجومِ یک‌باره
+  async function mapLimit(items, limit, fn) {
+    const out = new Array(items.length);
+    let next = 0;
+    const worker = async () => {
+      while (next < items.length) {
+        const i = next++;
+        out[i] = await fn(items[i]);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+    return out;
+  }
 
   async function getJson(url) {
     const r = await fetch(url, { cache: 'no-store', redirect: 'follow' });
@@ -6395,17 +6420,19 @@
     }
     const s = await Store.getSettings();
     const codes = { ...(s.fundCodes || {}) };
-    const out = [];
-    let failed = 0;
-    for (const f of Funds.FUNDS) {
+    // پشت‌سرهم که بود، هشت صندوق یعنی شانزده رفت‌وبرگشتِ پیاپی. موازی می‌رود،
+    // ولی نه هر هشت‌تا با هم — چهارتا چهارتا، تا یک‌باره روی سرور نریزیم.
+    const results = await mapLimit(Funds.FUNDS, 4, async (f) => {
       try {
         if (!codes[f.q]) codes[f.q] = Funds.pickFund(await getJson(Funds.searchUrl(f.q)), f.q);
-        if (!codes[f.q]) { failed++; continue; }
+        if (!codes[f.q]) return null;
         const hist = Funds.parseHistory(await getJson(Funds.historyUrl(codes[f.q])));
-        if (hist.length < 2) { failed++; continue; }
-        out.push({ name: f.name, kind: f.kind, insCode: codes[f.q], close: hist[0].close, returns: Funds.returnsOf(hist) });
-      } catch (_) { failed++; }
-    }
+        if (hist.length < 2) return null;
+        return { name: f.name, kind: f.kind, insCode: codes[f.q], close: hist[0].close, returns: Funds.returnsOf(hist) };
+      } catch (_) { return null; }
+    });
+    const out = results.filter(Boolean);
+    const failed = results.length - out.length;
     await Store.saveSettings({ fundCodes: codes });
     fundRows = out;
     fundsAt = Date.now();
@@ -6438,6 +6465,8 @@
     card.classList.add('tint-violet');
 
     if (!fundRows.length) {
+      // دکمهٔ «دسترسی بده» وقتی هنوز در حال خواندن است گمراه‌کننده بود
+      if (fundsLoading) { card.append(skeletonRows(6)); return card; }
       const why = el('div', 'kiosk-empty');
       why.append(document.createTextNode(fundsError || 'هنوز چیزی خوانده نشده.'));
       const grant = el('button', 'btn btn-ghost btn-sm', 'دادن دسترسی و امتحان دوباره');
@@ -6921,14 +6950,32 @@
         if ($('#view-kiosk').classList.contains('is-active')) ph.replaceWith(buildMarketCard());
       }
     }
+    // بورس و صندوق‌ها هر دو از tsetmc می‌خوانند. اول هر دو جای خودشان را
+    // می‌گیرند، بعد با هم بارگذاری می‌شوند — وگرنه کارتِ دوم تا تمام‌شدنِ اولی
+    // اصلاً ظاهر نمی‌شد.
+    const marketJobs = [];
     if (on.includes('bourse')) {
-      if (Date.now() - bourseAt > BOURSE_REFRESH_MS) await loadBourse();
-      grid.append(buildBourseCard());
+      const stale = Date.now() - bourseAt > BOURSE_REFRESH_MS;
+      bourseLoading = stale && !bourseRows.length;
+      const ph = buildBourseCard();
+      grid.append(ph);
+      if (stale) marketJobs.push(loadBourse().then(() => {
+        bourseLoading = false;
+        if ($('#view-kiosk').classList.contains('is-active')) ph.replaceWith(buildBourseCard());
+      }));
     }
     if (on.includes('funds')) {
-      if (Date.now() - fundsAt > FUNDS_REFRESH_MS) await loadFunds();
-      grid.append(buildFundsCard());
+      const stale = Date.now() - fundsAt > FUNDS_REFRESH_MS;
+      fundsLoading = stale && !fundRows.length;
+      const ph = buildFundsCard();
+      grid.append(ph);
+      if (stale) marketJobs.push(loadFunds().then(() => {
+        fundsLoading = false;
+        if ($('#view-kiosk').classList.contains('is-active')) ph.replaceWith(buildFundsCard());
+      }));
     }
+    // منتظر نمی‌مانیم که بقیهٔ کارت‌ها معطل شوند؛ فقط خطا بی‌صدا نماند
+    if (marketJobs.length) Promise.all(marketJobs).catch(e => console.warn('manshi: market cards:', e?.message));
     if (on.includes('news')) {
       const placeholder = buildNewsCard(settings);
       grid.append(placeholder);
