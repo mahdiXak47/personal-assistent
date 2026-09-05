@@ -2379,36 +2379,67 @@ small { font-size: 12px; }
 /* ── بورس ───────────────────────────────────────────────
    اینجا سبز یعنی رشد — برعکسِ کارت ارز، که بالا رفتنِ دلار خبرِ بدی است.
    هر کارت قراردادِ حوزهٔ خودش را دارد. */
+.bz-top { display: flex; flex-direction: column; gap: 6px; }
 .bz-index {
   display: flex; align-items: baseline; gap: 8px;
-  padding: 7px 10px; margin-bottom: 8px;
-  background: var(--surface-2); border-radius: var(--radius-sm);
+  padding: 8px 10px; background: var(--surface-2); border-radius: var(--radius-sm);
 }
 .bz-index-t { font-size: 11.5px; font-weight: 700; color: var(--text-3); }
-.bz-index-v { font-size: 16px; font-weight: 800; color: var(--text); font-variant-numeric: tabular-nums; margin-inline-start: auto; }
-.bz-tabs { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 4px; }
-.bz-tab {
-  border: 0; background: var(--surface-2); color: var(--text-3);
-  font: inherit; font-size: 11.5px; font-weight: 700;
-  border-radius: 999px; padding: 4px 11px; cursor: pointer;
-  transition: all var(--dur) var(--ease);
+.bz-index-v { font-size: 17px; font-weight: 800; color: var(--text); font-variant-numeric: tabular-nums; margin-inline-start: auto; }
+
+/* نوارِ پهنای بازار: نسبتِ مثبت به منفی در یک نگاه */
+.bz-breadth { display: flex; height: 6px; border-radius: 999px; overflow: hidden; background: var(--red); }
+.bz-breadth-up { background: var(--accent); }
+.bz-legend { display: flex; align-items: center; gap: 10px; font-size: 11px; font-variant-numeric: tabular-nums; }
+.bz-legend-up { color: var(--accent-text); font-weight: 700; }
+.bz-legend-down { color: var(--red); font-weight: 700; }
+.bz-legend-all { color: var(--text-3); margin-inline-start: auto; }
+
+/* دو ستون کنارِ هم؛ روی کارتِ باریک زیرِ هم می‌روند */
+.bz-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px; }
+@media (max-width: 460px) { .bz-cols { grid-template-columns: 1fr; } }
+.bz-col { display: flex; flex-direction: column; min-width: 0; }
+.bz-col-t { font-size: 11px; font-weight: 800; color: var(--text-3); letter-spacing: .3px; padding-bottom: 3px; }
+.bz-none { font-size: 11.5px; color: var(--text-3); padding: 4px 0; }
+
+.bz-item {
+  display: flex; align-items: baseline; gap: 8px; min-width: 0;
+  padding: 4px 0; border-bottom: 1px dashed var(--border-soft);
+  text-decoration: none; color: inherit;
+  transition: background var(--dur) var(--ease);
 }
-.bz-tab:hover { color: var(--text); }
-.bz-tab.is-on { background: var(--blue-soft); color: var(--blue); }
-.bz-sym { font-size: 13px; font-weight: 800; color: var(--text); }
-/* نامِ کامل کنارِ نماد کم‌رنگ می‌ماند و اگر جا نشد کوتاه می‌شود */
-.bz-full {
-  margin-inline-start: 6px; font-size: 11.5px; color: var(--text-3);
+.bz-item:last-child { border-bottom: 0; }
+.bz-item:hover { background: var(--surface-2); }
+.bz-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+.bz-sym {
+  font-size: 12.5px; font-weight: 800; color: var(--text);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .bz-ch {
-  flex: none; min-width: 62px; text-align: end;
+  flex: none; margin-inline-start: auto; min-width: 54px; text-align: end;
   font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums;
 }
 .bz-ch.is-up { color: var(--accent-text); }
 .bz-ch.is-down { color: var(--red); }
 .bz-ch.is-flat { color: var(--text-3); font-weight: 400; }
-.bz-stat { margin-top: 7px; font-size: 11.5px; color: var(--text-3); }
+
+/* ── صندوق‌ها ────────────────────────────────────────── */
+.fd-tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+.fd-tab {
+  border: 0; background: var(--surface-2); color: var(--text-3);
+  font: inherit; font-size: 11.5px; font-weight: 700;
+  border-radius: 999px; padding: 4px 11px; cursor: pointer;
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.fd-tab:hover { color: var(--text); }
+.fd-tab.is-on { background: var(--violet-soft); color: var(--violet); }
+.fd-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.fd-group { display: flex; flex-direction: column; }
+.fd-group + .fd-group { margin-top: 8px; }
+
+.bz-active { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; font-size: 11.5px; }
+.bz-active-t { color: var(--text-3); font-weight: 700; }
+.bz-dot { color: var(--text-3); }
 
 /* دسته‌های خبر */
 .kiosk-cats { display: flex; flex-wrap: wrap; gap: 5px; }

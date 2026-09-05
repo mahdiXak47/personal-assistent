@@ -51,6 +51,8 @@ const Bourse = (() => {
     return {
       symbol,
       name: cleanName(r.lvc),
+      // فقط رقم — این در آدرسِ لینک می‌نشیند و نباید هرچه سرور داد وارد شود
+      insCode: /^[0-9]{1,25}$/.test(String(r.insCode || '')) ? String(r.insCode) : '',
       close,
       last: last > 0 ? last : close,
       yesterday,
@@ -156,12 +158,19 @@ const Bourse = (() => {
     return best;
   }
 
+  // پهنای بازار: چند نماد مثبت‌اند و چند منفی. یک جملهٔ متنی این را نمی‌رساند؛
+  // upShare برای نوارِ نسبت است تا در یک نگاه دیده شود.
   function stats(rows) {
     const t = (rows || []).filter(traded);
+    const up = t.filter(r => r.changePct > 0).length;
+    const down = t.filter(r => r.changePct < 0).length;
+    const moved = up + down;
     return {
       traded: t.length,
-      up: t.filter(r => r.changePct > 0).length,
-      down: t.filter(r => r.changePct < 0).length
+      up, down,
+      flat: t.length - moved,
+      // وقتی هیچ نمادی تکان نخورده، نه مثبت است نه منفی — نصف‌نصف نشان می‌دهیم
+      upShare: moved ? up / moved : 0.5
     };
   }
 

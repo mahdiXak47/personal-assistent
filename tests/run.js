@@ -1457,6 +1457,92 @@ t('peopleFiles گروه‌بندی درست', () => {
       assert.deepStrictEqual(Bourse.topMovers(allUp, { dir: 'down' }), []);
     });
 
+    // ── صندوق‌ها ─────────────────────────────────────
+    const Funds = require('../core/funds.js');
+
+    // نتیجهٔ واقعیِ جست‌وجوی «کمند»: سه نتیجه، فقط یکی صندوق است
+    const kamandSearch = { instrumentSearch: [
+      { insCode: '34718633636164421', lVal30: 'صندوق س. با درآمد ثابت کمند', lVal18AFC: 'کمند', cgrValCot: 'H1', cgrValCotTitle: 'بازار صندوق های قابل معامله' },
+      { insCode: '70309338813767186', lVal30: 'گسترش قطعه سازي کمند', lVal18AFC: 'فکمند', cgrValCot: 'P1', cgrValCotTitle: 'بازار پایه زرد فرابورس' },
+      { insCode: '38294891095078093', lVal30: 'ح. گسترش قطعه سازي کمند', lVal18AFC: 'فکمندح', cgrValCot: 'P1', cgrValCotTitle: 'بازار پایه زرد فرابورس' }
+    ] };
+
+    t('صندوق: از میان نتایج، همان که صندوق است انتخاب می‌شود', () =>
+      assert.strictEqual(Funds.pickFund(kamandSearch, 'کمند'), '34718633636164421'));
+
+    // بدونِ تطبیقِ نماد، «فکمند» هم می‌توانست جواب حساب شود
+    t('صندوق: نمادِ ناهمخوان پذیرفته نمی‌شود', () =>
+      assert.strictEqual(Funds.pickFund(kamandSearch, 'فکمند'), ''));
+
+    t('صندوق: وقتی هیچ نتیجه‌ای صندوق نیست، خالی برمی‌گردد', () => {
+      const onlyStocks = { instrumentSearch: kamandSearch.instrumentSearch.slice(1) };
+      assert.strictEqual(Funds.pickFund(onlyStocks, 'فکمند'), '');
+      for (const bad of ['', 'x', '{}', null, { instrumentSearch: [] }]) {
+        assert.strictEqual(Funds.pickFund(bad, 'کمند'), '', JSON.stringify(bad));
+      }
+    });
+
+    // تاریخچهٔ واقعی از پاسخِ GetClosingPriceDailyList
+    const histRaw = { closingPriceDaily: [
+      { dEven: 20260902, pClosing: 4530 }, { dEven: 20260901, pClosing: 4470 },
+      { dEven: 20260831, pClosing: 4470 }, { dEven: 20260829, pClosing: 4380 },
+      { dEven: 20260826, pClosing: 4260 }, { dEven: 20260825, pClosing: 4140 },
+      { dEven: 20260824, pClosing: 4020 }, { dEven: 20260823, pClosing: 3910 },
+      { dEven: 20260822, pClosing: 3800 }, { dEven: 20260819, pClosing: 3690 },
+      { dEven: 20260803, pClosing: 2879 }
+    ] };
+    const hist = Funds.parseHistory(histRaw);
+
+    t('صندوق: تاریخچه از نو نزولی مرتب می‌شود', () => {
+      const shuffled = Funds.parseHistory({ closingPriceDaily: [histRaw.closingPriceDaily[5], histRaw.closingPriceDaily[0], histRaw.closingPriceDaily[3]] });
+      assert.deepStrictEqual(shuffled.map(x => x.date), [20260902, 20260829, 20260825]);
+    });
+
+    t('صندوق: ردیفِ بی‌قیمت یا بی‌تاریخ انداخته می‌شود', () => {
+      const dirty = Funds.parseHistory({ closingPriceDaily: [
+        { dEven: 20260902, pClosing: 4530 }, { dEven: 0, pClosing: 100 }, { dEven: 20260901, pClosing: 0 }
+      ] });
+      assert.strictEqual(dirty.length, 1);
+    });
+
+    t('صندوق: بازدهیِ روزانه از دو جلسهٔ آخر', () => {
+      // ۴۴۷۰ → ۴۵۳۰
+      assert.ok(Math.abs(Funds.returnOver(hist, 1) - 1.3423) < 0.01);
+    });
+
+    // روزِ هدف تعطیل است و داده ندارد؛ نباید بازه بی‌جواب بماند
+    t('صندوق: مبنا نزدیک‌ترین جلسهٔ قبل از تاریخِ هدف است', () => {
+      // ۷ روز قبل از ۲۰۲۶۰۹۰۲ می‌شود ۲۰۲۶۰۸۲۶ که خودش جلسه دارد: ۴۲۶۰
+      assert.ok(Math.abs(Funds.returnOver(hist, 7) - 6.3380) < 0.01);
+      // ۳ روز قبل می‌شود ۲۰۲۶۰۸۳۰ که جلسه ندارد → باید ۲۰۲۶۰۸۲۹ گرفته شود: ۴۳۸۰
+      assert.ok(Math.abs(Funds.returnOver(hist, 3) - 3.4247) < 0.01);
+    });
+
+    // «نداریم» با «صفر» یکی نیست — وگرنه صندوقِ تازه صدرنشینِ فهرستِ سالانه می‌شود
+    t('صندوق: بازه‌ای که تاریخچه به آن نمی‌رسد null است، نه صفر', () => {
+      assert.strictEqual(Funds.returnOver(hist, 365), null);
+      assert.strictEqual(Funds.returnOver([], 1), null);
+      assert.strictEqual(Funds.returnOver([{ date: 20260902, close: 100 }], 1), null);
+    });
+
+    t('صندوق: حسابِ تاریخ از مرزِ ماه و سال درست رد می‌شود', () => {
+      assert.strictEqual(Funds.shiftDate(20260301, 1), 20260228);
+      assert.strictEqual(Funds.shiftDate(20260101, 1), 20251231);
+      assert.strictEqual(Funds.shiftDate(20240301, 1), 20240229, 'سال کبیسه');
+    });
+
+    t('صندوق: رتبه‌بندی بر اساس بازهٔ انتخابی', () => {
+      const rows = [
+        { name: 'الف', kind: 'fixed', returns: { m1: 2.0, y1: null } },
+        { name: 'ب', kind: 'fixed', returns: { m1: 3.5, y1: 40 } },
+        { name: 'ج', kind: 'equity', returns: { m1: 9.9, y1: 10 } }
+      ];
+      assert.deepStrictEqual(Funds.rank(rows, 'fixed', 'm1').map(r => r.name), ['ب', 'الف']);
+      assert.deepStrictEqual(Funds.rank(rows, 'equity', 'm1').map(r => r.name), ['ج']);
+      // بی‌داده ته فهرست، نه صدر
+      assert.deepStrictEqual(Funds.rank(rows, 'fixed', 'y1').map(r => r.name), ['ب', 'الف']);
+    });
+
     // ── شاخص کل ──────────────────────────────────────
     // پاسخ یک عکسِ لحظه‌ای در هر چند دقیقهٔ روز است؛ سطرها از پاسخِ واقعی‌اند.
     const idx = { indexB1: [
@@ -2203,7 +2289,8 @@ t('peopleFiles گروه‌بندی درست', () => {
     t('قالب: عدد با جداکنندهٔ فارسی', () => {
       assert.strictEqual(M.faPrice(18341110), '۱۸٬۳۴۱٬۱۱۰');
       assert.strictEqual(M.faPrice(null), '—');
-      assert.strictEqual(M.faPercent(-0.87), '۰.۹٪');
+      assert.strictEqual(M.faPercent(-0.87), '۰٫۹٪', 'جداکنندهٔ اعشار در فارسی «٫» است، نه نقطهٔ لاتین');
+    assert.strictEqual(M.faPrice(6.35), '۶٫۳۵', 'قیمتِ اعشاری هم همین‌طور');
     });
   }
 

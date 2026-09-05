@@ -156,9 +156,10 @@ const Market = (() => {
   function faPrice(n) {
     if (n == null || !Number.isFinite(n)) return '—';
     const s = Math.abs(n) >= 1000 ? Math.round(n).toLocaleString('en-US').replace(/,/g, '٬') : String(n);
-    return s.replace(/\d/g, d => FA[+d]);
+    // جداکنندهٔ اعشار در فارسی «٫» است، نه نقطهٔ لاتین
+    return s.replace(/\./g, '٫').replace(/\d/g, d => FA[+d]);
   }
-  const faPercent = (p) => (p == null ? '' : `${Math.abs(p).toFixed(1).replace(/\d/g, d => FA[+d])}٪`);
+  const faPercent = (p) => (p == null ? '' : `${Math.abs(p).toFixed(1).replace(/\./g, '٫').replace(/\d/g, d => FA[+d])}٪`);
 
   const api = {
     toNumber, parseCurrencies, parseGold, pushSnapshot, changeFrom, withChange,

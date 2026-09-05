@@ -6021,7 +6021,8 @@
     ['beyt', 'سخن روز', 'شعر فارسی و نقل‌قولِ آدم‌های بزرگ — آفلاین، با امکان تازه‌سازی'],
     ['market', 'بازار', 'دلار، طلا و سکه — به سایت بیرونی وصل می‌شود'],
     ['news', 'اخبار', 'فناوری، ورزشی، اقتصاد و عمومی — به سایت بیرونی وصل می‌شود'],
-    ['bourse', 'بورس', 'بیشترین رشد و افتِ نمادها — به سایت بیرونی وصل می‌شود']
+    ['bourse', 'بورس', 'بیشترین رشد و افتِ نمادها — به سایت بیرونی وصل می‌شود'],
+    ['funds', 'صندوق‌ها', 'بازدهیِ صندوق‌های درآمد ثابت و سهامی در بازه‌های مختلف — به سایت بیرونی وصل می‌شود']
   ];
 
   // ── بازار: ارز، طلا و سکه ────────────────────────────
@@ -6228,7 +6229,7 @@
   // دیدهٔ بازارِ TSETMC یک فایلِ بزرگ است (چند مگابایت)، پس دیر به دیر گرفته
   // می‌شود و فقط نتیجهٔ خلاصه‌شده در حافظه می‌ماند، نه خودِ پاسخ.
   const BOURSE_REFRESH_MS = 15 * 60 * 1000;
-  let bourseRows = [], bourseIndex = null, bourseAt = 0, bourseError = '', bourseDir = 'up';
+  let bourseRows = [], bourseIndex = null, bourseAt = 0, bourseError = '';
 
   // شاخص جدا گرفته می‌شود: اگر یکی نیامد، آن یکی نباید از دست برود
   async function loadBourseIndex() {
@@ -6263,32 +6264,43 @@
     bourseIndex = await loadBourseIndex();
   }
 
-  function bourseRow(it) {
-    const r = el('div', 'mk-row');
-    const nm = el('span', 'mk-name');
-    // نماد پررنگ، نامِ کامل کم‌رنگ — نمادها کوتاه‌اند و چشم رویشان می‌نشیند
-    nm.append(el('b', 'bz-sym', it.symbol));
-    if (it.name && it.name !== it.symbol) nm.append(el('span', 'bz-full', it.name));
-    r.append(nm);
-    r.append(el('span', 'mk-num', Market.faPrice(it.close)));
-    // در بورس سبز یعنی رشد — برعکسِ کارت ارز، که بالا رفتنِ دلار خبرِ بدی است
-    const dir = it.changePct > 0.001 ? 'up' : it.changePct < -0.001 ? 'down' : 'flat';
+  // یک سطرِ نماد در ستونِ رشد/افت. نامِ کامل جا نمی‌شود، ولی در tooltip و
+  // aria-label می‌ماند تا نه موس از دستش بدهد نه صفحه‌خوان.
+  function bourseItem(it, dir) {
+    const r = el('a', 'bz-item');
+    r.href = `https://www.tsetmc.com/instInfo/${encodeURIComponent(it.insCode || '')}`;
+    r.target = '_blank'; r.rel = 'noopener noreferrer';
+    r.append(el('span', 'bz-sym', it.symbol));
     const ch = el('span', 'bz-ch is-' + dir);
-    if (dir !== 'flat') ch.append(el('span', 'mk-arrow', dir === 'up' ? '\u25b2' : '\u25bc'));
+    // پیکان کنارِ رنگ می‌آید: رنگ به‌تنهایی نباید حاملِ معنا باشد
+    ch.append(el('span', 'mk-arrow', dir === 'up' ? '\u25b2' : '\u25bc'));
     ch.append(document.createTextNode(Market.faPercent(it.changePct)));
     r.append(ch);
+    const full = `${it.symbol}${it.name && it.name !== it.symbol ? ' — ' + it.name : ''}`;
+    r.title = `${full} · ${Market.faPrice(it.close)}`;
+    r.setAttribute('aria-label',
+      `${full}، ${dir === 'up' ? 'رشد' : 'افت'} ${Market.faPercent(it.changePct)}، پایانی ${Market.faPrice(it.close)}`);
     return r;
   }
 
+  function bourseColumn(title, list, dir) {
+    const c = el('div', 'bz-col');
+    c.append(el('div', 'bz-col-t', title));
+    if (!list.length) {
+      c.append(el('div', 'bz-none', dir === 'up' ? 'امروز نمادی مثبت نبود' : 'امروز نمادی منفی نبود'));
+      return c;
+    }
+    for (const it of list) c.append(bourseItem(it, dir));
+    return c;
+  }
+
   function buildBourseCard() {
-    // «آخرین بروزرسانی» گمراه‌کننده است: بازار ۱۲:۳۰ بسته و ما شاید ۱۸ گرفته‌ایم.
-    // ساعتِ آخرین معامله از خودِ داده می‌آید و همان چیزی است که معنا دارد.
     const tradeAt = Bourse.lastTradeAt(bourseRows) || bourseIndex?.at || '';
     // تاریخِ معاملاتی مهم‌تر از ساعتِ گرفتنِ فایل است: جمعه که باز کنی، عددها
     // مالِ چهارشنبه‌اند و کارت باید همین را بگوید نه «آخرین بروزرسانی».
     const d = bourseIndex?.date;
     const dayLabel = d ? J.format(new Date(d.y, d.m - 1, d.d)) : '';
-    const sub = [dayLabel, tradeAt ? `آخرین معامله ${J.faDigits(tradeAt)}` : ''].filter(Boolean).join(' · ');
+    const sub = [dayLabel, tradeAt ? `ساعت ${J.faDigits(tradeAt)}` : ''].filter(Boolean).join(' · ');
     const card = kioskCard('بورس', sub);
     card.classList.add('tint-blue');
 
@@ -6304,40 +6316,163 @@
       return card;
     }
 
+    // ── سرِ کارت: شاخص + پهنای بازار ──
+    const st = Bourse.stats(bourseRows);
+    const top = el('div', 'bz-top');
     if (bourseIndex) {
-      const ix = el('div', 'bz-index');
-      ix.append(el('span', 'bz-index-t', 'شاخص کل'));
-      ix.append(el('span', 'bz-index-v', Market.faPrice(Math.round(bourseIndex.value))));
+      const row = el('div', 'bz-index');
+      row.append(el('span', 'bz-index-t', 'شاخص کل'));
+      row.append(el('span', 'bz-index-v', Market.faPrice(Math.round(bourseIndex.value))));
       const p = bourseIndex.changePct;
       const dir = p > 0.001 ? 'up' : p < -0.001 ? 'down' : 'flat';
       const ch = el('span', 'bz-ch is-' + dir);
       if (dir !== 'flat') ch.append(el('span', 'mk-arrow', dir === 'up' ? '\u25b2' : '\u25bc'));
       ch.append(document.createTextNode(Market.faPercent(p)));
-      ix.append(ch);
-      card.append(ix);
+      row.append(ch);
+      top.append(row);
+    }
+    // نوارِ پهنای بازار — «۴ مثبت، ۴ منفی» به‌عنوان جمله خوانده نمی‌شود؛
+    // نسبت را باید در یک نگاه دید.
+    const bar = el('div', 'bz-breadth');
+    bar.setAttribute('role', 'img');
+    bar.setAttribute('aria-label',
+      `${J.faDigits(st.up)} نماد مثبت و ${J.faDigits(st.down)} نماد منفی از ${J.faDigits(st.traded)} نمادِ معامله‌شده`);
+    const upSeg = el('span', 'bz-breadth-up');
+    upSeg.style.width = (st.upShare * 100).toFixed(1) + '%';
+    bar.append(upSeg);
+    top.append(bar);
+    const legend = el('div', 'bz-legend');
+    legend.append(el('span', 'bz-legend-up', `${J.faDigits(st.up)} مثبت`));
+    legend.append(el('span', 'bz-legend-down', `${J.faDigits(st.down)} منفی`));
+    legend.append(el('span', 'bz-legend-all', `از ${J.faDigits(st.traded)} نماد`));
+    top.append(legend);
+    card.append(top);
+
+    // ── دو ستون کنارِ هم: تب نداریم، چون در داشبورد باید یک‌نگاهی باشد ──
+    const cols = el('div', 'bz-cols');
+    cols.append(bourseColumn('بیشترین رشد', Bourse.topMovers(bourseRows, { dir: 'up', count: 5 }), 'up'));
+    cols.append(bourseColumn('بیشترین افت', Bourse.topMovers(bourseRows, { dir: 'down', count: 5 }), 'down'));
+    card.append(cols);
+
+    // پرمعامله‌ترین یک خط است، نه یک تبِ جدا
+    const act = Bourse.mostActive(bourseRows, 3);
+    if (act.length) {
+      const line = el('div', 'bz-active');
+      line.append(el('span', 'bz-active-t', 'پرمعامله‌ترین'));
+      act.forEach((it, i) => {
+        if (i) line.append(el('span', 'bz-dot', '·'));
+        const sp = el('span', 'bz-sym', it.symbol);
+        sp.title = `${it.name || it.symbol} · ارزش معاملات ${Market.faPrice(Math.round(it.value))} ریال`;
+        line.append(sp);
+      });
+      card.append(line);
     }
 
-    const tabs = el('div', 'bz-tabs');
-    for (const [key, label] of [['up', 'بیشترین رشد'], ['down', 'بیشترین افت'], ['value', 'پرمعامله‌ترین']]) {
-      const b = el('button', 'bz-tab' + (bourseDir === key ? ' is-on' : ''), label);
+    card.append(el('p', 'kiosk-note', 'از tsetmc.com · قیمتِ پایانی، نه لحظه‌ای. این داده است، نه توصیهٔ سرمایه‌گذاری.'));
+    return card;
+  }
+
+  // ── صندوق‌ها ────────────────────────────────────────
+  // هر صندوق یک درخواستِ تاریخچه لازم دارد، پس فهرست کوتاه است و روزی یک بار
+  // خوانده می‌شود. کدِ نماد فقط یک بار جست‌وجو و برای همیشه ذخیره می‌شود.
+  const FUNDS_REFRESH_MS = 6 * 3600 * 1000;
+  let fundRows = [], fundsAt = 0, fundsError = '', fundPeriod = 'm1';
+
+  async function getJson(url) {
+    const r = await fetch(url, { cache: 'no-store', redirect: 'follow' });
+    if (!r.ok) throw new Error('http ' + r.status);
+    return r.text();
+  }
+
+  async function loadFunds() {
+    const origin = new URL(Funds.SEARCH_URL).origin + '/*';
+    if (Store.isExt && chrome.permissions) {
+      try {
+        if (!await chrome.permissions.contains({ origins: [origin] })) {
+          fundsError = 'دسترسی به tsetmc داده نشده'; fundRows = []; return;
+        }
+      } catch (_) { /* ادامه بده */ }
+    }
+    const s = await Store.getSettings();
+    const codes = { ...(s.fundCodes || {}) };
+    const out = [];
+    let failed = 0;
+    for (const f of Funds.FUNDS) {
+      try {
+        if (!codes[f.q]) codes[f.q] = Funds.pickFund(await getJson(Funds.searchUrl(f.q)), f.q);
+        if (!codes[f.q]) { failed++; continue; }
+        const hist = Funds.parseHistory(await getJson(Funds.historyUrl(codes[f.q])));
+        if (hist.length < 2) { failed++; continue; }
+        out.push({ name: f.name, kind: f.kind, insCode: codes[f.q], close: hist[0].close, returns: Funds.returnsOf(hist) });
+      } catch (_) { failed++; }
+    }
+    await Store.saveSettings({ fundCodes: codes });
+    fundRows = out;
+    fundsAt = Date.now();
+    fundsError = out.length ? '' : (Store.isExt ? 'سایت پاسخ نداد (شبکه یا فیلترینگ)' : 'در پیش‌نمایش مرورگر ممکن نیست (CORS)');
+    if (out.length && failed) fundsError = '';
+  }
+
+  function fundItem(it) {
+    const p = it.returns?.[fundPeriod];
+    const r = el('a', 'bz-item');
+    r.href = `https://www.tsetmc.com/instInfo/${encodeURIComponent(it.insCode || '')}`;
+    r.target = '_blank'; r.rel = 'noopener noreferrer';
+    r.append(el('span', 'bz-sym', it.name));
+    const dir = p == null ? 'flat' : p > 0.001 ? 'up' : p < -0.001 ? 'down' : 'flat';
+    const ch = el('span', 'bz-ch is-' + dir);
+    if (dir !== 'flat') ch.append(el('span', 'mk-arrow', dir === 'up' ? '\u25b2' : '\u25bc'));
+    // «—» یعنی تاریخچه به این بازه نمی‌رسد؛ با صفر یکی نیست
+    ch.append(document.createTextNode(p == null ? '—' : Market.faPercent(p)));
+    r.append(ch);
+    const periodLabel = (Funds.PERIODS.find(x => x.key === fundPeriod) || {}).label || '';
+    r.title = `${it.name} · قیمت ${Market.faPrice(it.close)}`;
+    r.setAttribute('aria-label', p == null
+      ? `${it.name}، برای بازهٔ ${periodLabel} داده‌ای نیست`
+      : `${it.name}، بازدهیِ ${periodLabel} ${p > 0 ? 'مثبت' : 'منفی'} ${Market.faPercent(p)}`);
+    return r;
+  }
+
+  function buildFundsCard() {
+    const card = kioskCard('صندوق‌ها', fundsAt ? `${J.faDigits(fundRows.length)} صندوق` : '');
+    card.classList.add('tint-violet');
+
+    if (!fundRows.length) {
+      const why = el('div', 'kiosk-empty');
+      why.append(document.createTextNode(fundsError || 'هنوز چیزی خوانده نشده.'));
+      const grant = el('button', 'btn btn-ghost btn-sm', 'دادن دسترسی و امتحان دوباره');
+      grant.addEventListener('click', () => grantAndReload([new URL(Funds.SEARCH_URL).origin + '/*'], async () => {
+        fundsAt = 0; await loadFunds(); renderKiosk();
+      }));
+      why.append(grant);
+      card.append(why);
+      return card;
+    }
+
+    // انتخابِ بازه — همان چیزی که سؤال را جواب می‌دهد: «کدام در چه بازه‌ای بهتر بوده»
+    const tabs = el('div', 'fd-tabs');
+    tabs.setAttribute('role', 'tablist');
+    tabs.setAttribute('aria-label', 'بازهٔ بازدهی');
+    for (const p of Funds.PERIODS) {
+      const b = el('button', 'fd-tab' + (fundPeriod === p.key ? ' is-on' : ''), p.label);
       b.type = 'button';
-      b.addEventListener('click', () => { bourseDir = key; renderKiosk(); });
+      b.setAttribute('role', 'tab');
+      b.setAttribute('aria-selected', fundPeriod === p.key ? 'true' : 'false');
+      b.addEventListener('click', () => { fundPeriod = p.key; renderKiosk(); });
       tabs.append(b);
     }
     card.append(tabs);
 
-    const list = bourseDir === 'value' ? Bourse.mostActive(bourseRows, 6)
-                                       : Bourse.topMovers(bourseRows, { dir: bourseDir, count: 6 });
-    const box = el('div', 'mk-group');
-    for (const it of list) box.append(bourseRow(it));
-    card.append(box);
+    for (const k of Funds.KINDS) {
+      const list = Funds.rank(fundRows, k.key, fundPeriod);
+      if (!list.length) continue;
+      const sec = el('div', 'fd-group');
+      sec.append(el('div', 'bz-col-t', k.label));
+      for (const it of list) sec.append(fundItem(it));
+      card.append(sec);
+    }
 
-    const st = Bourse.stats(bourseRows);
-    card.append(el('div', 'bz-stat',
-      `${J.faDigits(st.traded)} نماد معامله شد — ${J.faDigits(st.up)} مثبت، ${J.faDigits(st.down)} منفی`));
-
-    const note = el('p', 'kiosk-note', 'از tsetmc.com · قیمتِ پایانی، نه لحظه‌ای. این داده است، نه توصیهٔ سرمایه‌گذاری.');
-    card.append(note);
+    card.append(el('p', 'kiosk-note', 'از tsetmc.com · بازدهی از قیمتِ پایانی حساب می‌شود. بازدهیِ گذشته تضمینِ آینده نیست — این داده است، نه توصیهٔ سرمایه‌گذاری.'));
     return card;
   }
 
@@ -6789,6 +6924,10 @@
     if (on.includes('bourse')) {
       if (Date.now() - bourseAt > BOURSE_REFRESH_MS) await loadBourse();
       grid.append(buildBourseCard());
+    }
+    if (on.includes('funds')) {
+      if (Date.now() - fundsAt > FUNDS_REFRESH_MS) await loadFunds();
+      grid.append(buildFundsCard());
     }
     if (on.includes('news')) {
       const placeholder = buildNewsCard(settings);
