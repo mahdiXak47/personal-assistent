@@ -90,6 +90,7 @@
     document.querySelectorAll('.view').forEach(v =>
       v.classList.toggle('is-active', v.id === 'view-' + view));
     if (view === 'tasks') renderTasksView();
+    if (view === 'projects') renderProjects();
     if (view === 'week') renderWeek();
     if (view === 'meetings') renderMeetingsModule();
     if (view === 'people') renderPeople();
@@ -100,6 +101,8 @@
   navItems.forEach(btn => btn.addEventListener('click', () => {
     // کلیک روی «کارها» در ریل یعنی «فهرست کارها»، نه پروندهٔ بازِ قبلی
     if (btn.dataset.view === 'tasks') openProjectId = null;
+    // کلیک روی «پروژه‌ها» در ریل یعنی فهرست، نه پروندهٔ بازِ قبلی
+    if (btn.dataset.view === 'projects') openProjectId = null;
     goto(btn.dataset.view);
   }));
   // پیوندهای «رفتن به بخش» (نوار یک‌نگاه، لینکِ همهٔ کارها و…)
@@ -117,7 +120,7 @@
   // برچسبِ دسترس‌پذیر + تولتیپ برای ریل (لازم برای حالتِ آیکونیِ باریک).
   // شمارهٔ میان‌بر هم در تولتیپ می‌آید — این میان‌برها وجود داشتند ولی هیچ‌جا
   // اعلام نمی‌شدند، پس عملاً برای کاربر وجود نداشتند.
-  const SHORTCUT_ORDER = ['today', 'week', 'meetings', 'tasks', 'people', 'report'];
+  const SHORTCUT_ORDER = ['today', 'week', 'meetings', 'tasks', 'projects', 'people', 'report'];
   document.querySelectorAll('.rail-item[data-view]').forEach(b => {
     const s = b.querySelector('span:not(.rail-badge)');
     if (!s) return;
@@ -1097,8 +1100,7 @@
   async function renderTodoAsync() {
     const [tasks, projects] = await Promise.all([Store.getTasks(), Store.getProjects()]);
     cachedTasks = tasks; cachedProjects = projects || [];
-    if (openProjectId) { await renderProjectPage(); renderProjectBar(); return; }
-    await renderProjectPage();   // پرونده را ببندد و نمای عادی را برگرداند
+    // پروندهٔ پروژه دیگر اینجا نیست — نمای خودش را دارد
     renderProjectBar();
     renderTodo(tasks);
   }
@@ -2073,12 +2075,11 @@
 
   function openProject(id) {
     openProjectId = id;
-    goto('tasks');
-    renderTodoAsync();
+    goto('projects');
   }
   function closeProject() {
     openProjectId = null;
-    renderTodoAsync();
+    renderProjects();
   }
 
   // فهرستِ مستقلِ پوشه‌ها — بالای هر دو نما، تا پروژه فقط از راه چیپِ یک کار
@@ -2115,8 +2116,90 @@
   }
 
   // پروندهٔ پروژه: جلسه، آدم، قول و کارِ بعدی — همه از دادهٔ موجود
+  // ── فهرست پروژه‌ها ───────────────────────────────────
+  // گروه‌بندی بر اساس مرحله، و مهم‌ترین ستون: «چند وقت است تکان نخورده».
+  // این تنها چیزی است که در یک نگاه می‌گوید کدام پروژه دارد از دست می‌رود.
+  function projectRow(d) {
+    const p = d.project;
+    const row = el('button', 'proj-row' + (d.stalled ? ' is-stalled' : ''));
+    row.type = 'button';
+    row.addEventListener('click', () => { openProjectId = p.id; renderProjects(); });
+
+    const dot = el('span', 'proj-row-dot');
+    dot.dataset.color = p.color || 'slate';
+    row.append(dot);
+
+    const main = el('span', 'proj-row-main');
+    main.append(el('span', 'proj-row-name', p.name));
+    const bits = [];
+    if (d.counts.open) bits.push(`${J.faDigits(d.counts.open)} کار باز`);
+    if (d.counts.meetings) bits.push(`${J.faDigits(d.counts.meetings)} جلسه`);
+    if (d.log.length) bits.push(`${J.faDigits(d.log.length)} یادداشت`);
+    main.append(el('span', 'proj-row-sub', bits.length ? bits.join(' · ') : 'هنوز خالی است'));
+    row.append(main);
+
+    // متن کنارِ رنگ می‌آید؛ «راکد» نباید فقط با قرمزی فهمیده شود
+    const when = el('span', 'proj-row-when' + (d.stalled ? ' is-stalled' : ''));
+    when.textContent = d.daysSinceTouch == null ? '—'
+      : d.daysSinceTouch === 0 ? 'امروز'
+      : `${J.faDigits(d.daysSinceTouch)} روز پیش`;
+    row.append(when);
+    if (d.stalled) row.append(el('span', 'proj-row-flag', 'راکد'));
+
+    row.setAttribute('aria-label',
+      `${p.name}، ${bits.join('، ') || 'خالی'}، آخرین تکان ${when.textContent}${d.stalled ? '، راکد' : ''}`);
+    return row;
+  }
+
+  async function renderProjects() {
+    const wrap = $('#projGroups');
+    if (!wrap) return;
+    cachedProjects = await Store.getProjects();
+    cachedTasks = await Store.getTasks();
+    if (openProjectId) { await renderProjectPage(); return; }
+    await renderProjectPage();          // پرونده را ببندد و فهرست را برگرداند
+
+    const sessions = await Store.getSessions();
+    const now = new Date();
+    const all = cachedProjects.filter(p => p && !p.archived);
+    const dossiers = new Map(all.map(p => [p.id, Store.projectDossier(p.id, cachedProjects, cachedTasks, sessions, now)]));
+
+    const stalled = all.filter(p => dossiers.get(p.id)?.stalled).length;
+    $('#projStats').textContent = all.length
+      ? `${J.faDigits(all.length)} پروژه${stalled ? ` — ${J.faDigits(stalled)} تا راکد` : ''}`
+      : '';
+    const badge = $('#stalledCount');
+    if (badge) { badge.hidden = !stalled; badge.textContent = J.faDigits(stalled); }
+
+    wrap.replaceChildren();
+    if (!all.length) {
+      const e = el('div', 'empty');
+      e.innerHTML = ICONS.folder;
+      e.append(el('div', null, 'هنوز پروژه‌ای نساخته‌ای'));
+      e.append(el('div', 'hint', 'پروژه جایی است که یک رابطه یا ابتکار را جلو می‌بری — بزرگ‌تر از یک کار، و لازم نیست به جلسه‌ای وصل باشد.'));
+      const b = el('button', 'btn btn-primary btn-sm', 'اولین پروژه را بساز');
+      b.addEventListener('click', () => $('#projNewTop').click());
+      e.append(b);
+      wrap.append(e);
+      return;
+    }
+
+    for (const st of Store.PROJECT_STAGES) {
+      const list = all.filter(p => (p.stage || 'active') === st.id);
+      if (!list.length) continue;
+      // راکدها بالا: همان‌هایی که باید ببینی
+      list.sort((a, b) => (dossiers.get(b.id)?.daysSinceTouch ?? -1) - (dossiers.get(a.id)?.daysSinceTouch ?? -1));
+      const sec = el('section', 'proj-group');
+      const h = el('h2', 'proj-group-h', st.name);
+      h.append(el('span', 'proj-group-n', J.faDigits(list.length)));
+      sec.append(h);
+      for (const p of list) sec.append(projectRow(dossiers.get(p.id)));
+      wrap.append(sec);
+    }
+  }
+
   async function renderProjectPage() {
-    const box = $('#projPage'), main = $('#tasksMain');
+    const box = $('#projPage'), main = $('#projListWrap');
     if (!box) return;
     if (!openProjectId) { box.hidden = true; box.textContent = ''; if (main) main.hidden = false; return; }
 
@@ -2132,7 +2215,7 @@
 
     // ── سربرگ ──
     const head = el('div', 'proj-page-head');
-    const back = el('button', 'btn btn-ghost btn-sm proj-back', 'بازگشت به کارها');
+    const back = el('button', 'btn btn-ghost btn-sm proj-back', 'همهٔ پروژه‌ها');
     back.addEventListener('click', closeProject);
     head.append(back);
 
@@ -2159,6 +2242,16 @@
     });
     head.append(stageSel);
     box.append(head);
+
+    // ── آخرین تکان ──
+    // پیش از هر چیز: این پروژه زنده است یا از دست رفته؟
+    const touch = el('div', 'proj-touch' + (d.stalled ? ' is-stalled' : ''));
+    touch.append(el('span', 'proj-touch-label', 'آخرین تکان'));
+    touch.append(el('b', null, d.daysSinceTouch == null ? '—'
+      : d.daysSinceTouch === 0 ? 'امروز'
+      : `${J.faDigits(d.daysSinceTouch)} روز پیش`));
+    if (d.stalled) touch.append(el('span', 'proj-row-flag', 'راکد'));
+    box.append(touch);
 
     // ── کارِ بعدی: تنها چیزی که واقعاً باید بدانی ──
     const nextBox = el('div', 'proj-next' + (d.next ? '' : ' is-empty'));
@@ -2188,6 +2281,55 @@
     stat(d.counts.meetings, 'جلسه');
     stat(d.counts.done, 'انجام‌شده');
     box.append(stats);
+
+    // ── دفترچه ──
+    // تنها جایی که خودِ کاربر می‌گوید چه شد. بقیهٔ صفحه استنتاج است؛ این نیست.
+    {
+      const sec = el('section', 'proj-sec');
+      sec.append(el('h2', 'proj-sec-h', 'دفترچه'));
+
+      const form = el('form', 'proj-log-add');
+      const input = el('input', 'proj-log-input');
+      input.type = 'text';
+      input.placeholder = 'چه شد؟ مثلاً: زنگ زدم، گفتند بعد از عید پیگیری کنیم';
+      input.setAttribute('aria-label', 'یادداشت تازه در دفترچهٔ پروژه');
+      input.maxLength = Store.PROJ_NOTE_MAX;
+      const add = el('button', 'btn btn-primary btn-sm', 'ثبت');
+      add.type = 'submit';
+      form.append(input, add);
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const entry = await Store.addProjectNote(p.id, input.value);
+        if (!entry) { toast('چیزی ننوشتی'); return; }
+        input.value = '';
+        await renderAll();
+        toast('در دفترچه ثبت شد');
+      });
+      sec.append(form);
+
+      if (d.log.length) {
+        const list = el('div', 'proj-log');
+        for (const n of d.log) {
+          const item = el('div', 'proj-log-item');
+          const when = el('span', 'proj-log-when', n.at ? J.relLabel(J.iso(new Date(n.at)), now) : '—');
+          if (n.at) when.title = J.format(new Date(n.at));
+          item.append(when);
+          item.append(el('p', 'proj-log-text', n.text));
+          const del = svgBtn('proj-log-del', ICONS.trash, 'حذف این یادداشت');
+          del.addEventListener('click', async () => {
+            await Store.removeProjectNote(p.id, n.id);
+            await renderAll();
+            toast('حذف شد');
+          });
+          item.append(del);
+          list.append(item);
+        }
+        sec.append(list);
+      } else {
+        sec.append(el('p', 'hint', 'هنوز چیزی ننوشته‌ای. هر تماس، هر تصمیم، هر قولی که دادی — همین‌جا بنویس تا بعداً بدانی کجا بودی.'));
+      }
+      box.append(sec);
+    }
 
     // ── آدم‌ها ──
     if (d.people.length) {
@@ -2442,7 +2584,6 @@
 
   function renderTasksView() {
     // پروندهٔ باز جای کلِ نمای کارها را می‌گیرد؛ تعویضِ فهرست/برد نباید گمش کند
-    if (openProjectId) { renderProjectPage(); renderProjectBar(); return; }
     renderProjectBar();
     const isBoard = tasksView === 'board';
     $('#taskListWrap').hidden = isBoard;
@@ -5834,17 +5975,17 @@
     if (checked) checked.focus();
   }
 
-  if ($('#projNew')) {
-    $('#projNew').addEventListener('click', async () => {
-      const name = prompt('نام پوشهٔ تازه؟');
-      if (name === null) return;
-      const p = await Store.saveProject({ name });
-      if (!p) { toast('نام خالی بود'); return; }
-      await renderAll();
-      toast('پوشهٔ «' + p.name + '» ساخته شد');
-      openProject(p.id);
-    });
+  async function newProjectFlow(label) {
+    const name = prompt(label);
+    if (name === null) return;
+    const p = await Store.saveProject({ name });
+    if (!p) { toast('نام خالی بود'); return; }
+    await renderAll();
+    toast('«' + p.name + '» ساخته شد');
+    openProject(p.id);
   }
+  $('#projNew')?.addEventListener('click', () => newProjectFlow('نام پوشهٔ تازه؟'));
+  $('#projNewTop')?.addEventListener('click', () => newProjectFlow('نام پروژهٔ تازه؟'));
 
   ['#ctxBtn', '#ctxBtn2'].forEach(sel => {
     const b = $(sel);
@@ -5953,13 +6094,13 @@
 
   // میان‌برهای سراسری
   const inField = e => { const t = e.target; return t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable); };
-  const VIEW_KEYS = ['today', 'week', 'meetings', 'tasks', 'people', 'report'];
+  const VIEW_KEYS = ['today', 'week', 'meetings', 'tasks', 'projects', 'people', 'report'];
   document.addEventListener('keydown', e => {
     if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); openCmd(); return; }
     if (inField(e) || e.metaKey || e.ctrlKey || e.altKey) return;
     if (e.key === '/') { e.preventDefault(); openCmd(); }
     else if (e.key === 'n') { e.preventDefault(); goto('today'); quickInput.focus(); }
-    else if (e.key >= '1' && e.key <= '6') { e.preventDefault(); goto(VIEW_KEYS[+e.key - 1]); }
+    else if (e.key >= '1' && e.key <= '7') { e.preventDefault(); goto(VIEW_KEYS[+e.key - 1]); }
   });
 
   // ---------- رندر کلی ----------

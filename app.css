@@ -1488,6 +1488,67 @@ h4.mom-h { font-size: 14px; color: var(--text-2); }
 .kanban-card.is-done .kanban-card-title { color: var(--text-3); text-decoration: line-through; }
 .kanban-card .todo-chips { margin-top: 7px; }
 /* نوار پوشه‌ها — ورودیِ مستقل به پرونده‌ها */
+/* ── فهرست پروژه‌ها ─────────────────────────────────────
+   ستونِ «آخرین تکان» مهم‌ترین چیزِ این فهرست است: در یک نگاه می‌گوید کدام
+   پروژه دارد از دست می‌رود. «راکد» متن هم دارد، نه فقط رنگ. */
+.proj-group + .proj-group { margin-top: 18px; }
+.proj-group-h { font-size: 12px; font-weight: 800; color: var(--text-3); letter-spacing: .03em; margin: 0 0 6px; display: flex; align-items: center; gap: 7px; }
+.proj-group-n { font-weight: 700; color: var(--text-3); background: var(--surface-2); border-radius: 999px; padding: 1px 8px; font-size: 11px; }
+
+.proj-row {
+  display: flex; align-items: center; gap: 11px; width: 100%;
+  padding: 11px 13px; border: 1px solid var(--border-soft); border-radius: var(--radius-sm);
+  background: var(--surface); color: inherit; font: inherit; text-align: start; cursor: pointer;
+  transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+.proj-row + .proj-row { margin-top: 7px; }
+.proj-row:hover { background: var(--surface-2); border-color: var(--border); }
+.proj-row:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.proj-row.is-stalled { border-inline-start: 3px solid var(--amber); }
+.proj-row-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; background: var(--text-3); }
+.proj-row-dot[data-color="sky"] { background: var(--blue); }
+.proj-row-dot[data-color="grass"] { background: var(--accent); }
+.proj-row-dot[data-color="amber"] { background: var(--amber); }
+.proj-row-dot[data-color="rose"] { background: var(--red); }
+.proj-row-dot[data-color="violet"] { background: var(--violet); }
+.proj-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.proj-row-name { font-size: 14px; font-weight: 700; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.proj-row-sub { font-size: 11.5px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.proj-row-when { flex: none; font-size: 11.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.proj-row-when.is-stalled { color: var(--amber); font-weight: 700; }
+.proj-row-flag { flex: none; font-size: 10.5px; font-weight: 800; color: var(--amber); background: var(--amber-soft); border-radius: 999px; padding: 2px 8px; }
+
+/* نوارِ آخرین تکان در خودِ پرونده */
+.proj-touch { display: flex; align-items: baseline; gap: 9px; padding: 9px 12px; margin-bottom: 12px;
+  background: var(--surface-2); border-radius: var(--radius-sm); font-size: 13px; }
+.proj-touch.is-stalled { background: var(--amber-soft); }
+.proj-touch-label { font-size: 11.5px; font-weight: 700; color: var(--text-3); }
+
+/* ── دفترچه ───────────────────────────────────────────── */
+.proj-log-add { display: flex; gap: 7px; margin-bottom: 11px; }
+.proj-log-input {
+  flex: 1; min-width: 0; font: inherit; font-size: 13px;
+  padding: 9px 12px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border); background: var(--bg-soft); color: var(--text);
+}
+.proj-log-input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+.proj-log { display: flex; flex-direction: column; }
+.proj-log-item {
+  display: flex; align-items: baseline; gap: 11px;
+  padding: 9px 0; border-bottom: 1px dashed var(--border-soft);
+}
+.proj-log-item:last-child { border-bottom: 0; }
+.proj-log-when { flex: none; min-width: 74px; font-size: 11.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.proj-log-text { flex: 1; min-width: 0; margin: 0; font-size: 13px; line-height: 1.85; color: var(--text); overflow-wrap: anywhere; }
+.proj-log-del {
+  flex: none; width: 26px; height: 26px; padding: 5px; border: 0; border-radius: 7px;
+  background: none; color: var(--text-3); cursor: pointer; opacity: 0;
+  transition: opacity var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.proj-log-del svg { width: 100%; height: 100%; }
+.proj-log-item:hover .proj-log-del, .proj-log-del:focus-visible { opacity: 1; }
+.proj-log-del:hover { color: var(--red); }
+
 .proj-bar { margin: 0 4px 18px; }
 .proj-bar-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 10px; }
 .proj-bar-head h2 { font-size: 13px; font-weight: 700; color: var(--text-2); margin: 0; }

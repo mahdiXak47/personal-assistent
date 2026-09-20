@@ -1389,6 +1389,107 @@ t('peopleFiles گروه‌بندی درست', () => {
       assert.ok(/شنیده نشد/.test(warn.text), warn.text);
     });
 
+    // ── دفترچهٔ پروژه و «آخرین تکان» ─────────────────────
+    t('دفترچه: تازه‌ترین یادداشت بالا می‌نشیند', () => {
+      const p = { id: 'p1', name: 'دیجی‌کالا', log: [
+        { id: 'a', at: '2026-09-14T10:00:00.000Z', text: 'زنگ زدم' },
+        { id: 'b', at: '2026-09-21T10:00:00.000Z', text: 'دیلی شروع شد' }
+      ] };
+      assert.deepStrictEqual(Store.projectNotes(p).map(n => n.id), ['b', 'a']);
+    });
+
+    // دو یادداشت در یک ثانیه: باید تازه‌ترین (آخرین ثبت) بالا بیاید
+    t('دفترچه: یادداشت‌های هم‌زمان به ترتیبِ معکوسِ ثبت می‌آیند', () => {
+      const same = '2026-09-21T10:00:00.000Z';
+      const p = { log: [{ id: 'a', at: same, text: 'اول' }, { id: 'b', at: same, text: 'دوم' }] };
+      assert.deepStrictEqual(Store.projectNotes(p).map(n => n.id), ['b', 'a']);
+    });
+
+    t('دفترچه: ورودیِ بی‌متن یا خراب انداخته می‌شود', () => {
+      assert.deepStrictEqual(Store.projectNotes({ log: [null, { text: '' }, 3] }), []);
+      assert.deepStrictEqual(Store.projectNotes({}), []);
+      assert.deepStrictEqual(Store.projectNotes(null), []);
+    });
+
+    // پروژه‌ای که هنوز کار و جلسه ندارد هم باید نشانهٔ حیات داشته باشد،
+    // وگرنه از رادار می‌افتد — و همان است که بیشتر یادآوری لازم دارد.
+    t('تکان: از ساختِ پروژه، حتی وقتی نه کاری هست نه جلسه‌ای', () => {
+      const p = { id: 'p1', createdAt: '2026-09-01T08:00:00.000Z' };
+      assert.strictEqual(Store.lastTouch(p, [], []), '2026-09-01T08:00:00.000Z');
+    });
+
+    t('تکان: تازه‌ترینِ دفترچه، جلسه و کار برنده است', () => {
+      const p = { id: 'p1', createdAt: '2026-09-01T08:00:00.000Z',
+        log: [{ id: 'a', at: '2026-09-10T08:00:00.000Z', text: 'x' }] };
+      const tasks = [{ updatedAt: '2026-09-12T08:00:00.000Z' }];
+      const meetings = [{ startedAt: '2026-09-18T08:00:00.000Z' }];
+      assert.strictEqual(Store.lastTouch(p, tasks, meetings), '2026-09-18T08:00:00.000Z');
+      // بدونِ جلسه، کار برنده می‌شود
+      assert.strictEqual(Store.lastTouch(p, tasks, []), '2026-09-12T08:00:00.000Z');
+      // بدونِ هیچ‌کدام، دفترچه
+      assert.strictEqual(Store.lastTouch(p, [], []), '2026-09-10T08:00:00.000Z');
+    });
+
+    t('تکان: تاریخِ خراب نادیده گرفته می‌شود، نه اینکه همه را خراب کند', () => {
+      const p = { id: 'p1', createdAt: '2026-09-01T08:00:00.000Z' };
+      assert.strictEqual(Store.lastTouch(p, [{ updatedAt: 'نامعتبر' }], []), '2026-09-01T08:00:00.000Z');
+    });
+
+    t('پرونده: دفترچه و آخرین تکان در خروجی هست', () => {
+      const projects = [{ id: 'p1', name: 'دیجی‌کالا', stage: 'active', createdAt: '2026-09-01T08:00:00.000Z',
+        log: [{ id: 'a', at: '2026-09-18T08:00:00.000Z', text: 'دیلی شروع شد' }] }];
+      const d = Store.projectDossier('p1', projects, [], [], new Date('2026-09-21T08:00:00.000Z'));
+      assert.strictEqual(d.log.length, 1);
+      assert.strictEqual(d.lastTouchAt, '2026-09-18T08:00:00.000Z');
+      assert.strictEqual(d.daysSinceTouch, 3);
+    });
+
+    // شرطِ قبلی own.length>0 بود، پس پروژهٔ بی‌کار هرگز راکد اعلام نمی‌شد
+    // راکدی مسئلهٔ زمان است، نه شمارشِ کار
+    t('راکد: پروژهٔ تازه راکد نیست، حتی وقتی خالی است', () => {
+      const d = Store.projectDossier('p1',
+        [{ id: 'p1', name: 'x', stage: 'active', createdAt: '2026-09-19T08:00:00.000Z' }], [], [],
+        new Date('2026-09-21T08:00:00.000Z'));
+      assert.strictEqual(d.stalled, false, 'دو روزه است، تازه است نه راکد');
+    });
+
+    t('راکد: پروژهٔ خالی که دو هفته سکوت کرده راکد است', () => {
+      const mk = (stage) => Store.projectDossier('p1',
+        [{ id: 'p1', name: 'x', stage, createdAt: '2026-09-01T08:00:00.000Z' }], [], [],
+        new Date('2026-09-21T08:00:00.000Z'));
+      assert.strictEqual(mk('active').stalled, true);
+      assert.strictEqual(mk('waiting').stalled, true);
+      // «ایده» هنوز شروع نشده و «تمام‌شده» تمام شده — هیچ‌کدام راکد نیستند
+      assert.strictEqual(mk('idea').stalled, false);
+      assert.strictEqual(mk('done').stalled, false);
+    });
+
+    // شرطِ قبلی «کارِ باز ندارد» بود و این حالت را سالم می‌شمرد
+    t('راکد: کارِ بازی که یک ماه دست نخورده، پروژه را راکد می‌کند', () => {
+      const d = Store.projectDossier('p1',
+        [{ id: 'p1', name: 'x', stage: 'active', createdAt: '2026-08-01T08:00:00.000Z' }],
+        [{ id: 't1', title: 'کار', status: 'open', projectId: 'p1', updatedAt: '2026-08-15T08:00:00.000Z' }], [],
+        new Date('2026-09-21T08:00:00.000Z'));
+      assert.strictEqual(d.stalled, true);
+    });
+
+    t('راکد: کاری که همین دیروز به‌روز شده پروژه را زنده نگه می‌دارد', () => {
+      const d = Store.projectDossier('p1',
+        [{ id: 'p1', name: 'x', stage: 'active', createdAt: '2026-08-01T08:00:00.000Z' }],
+        [{ id: 't1', title: 'کار', status: 'open', projectId: 'p1', updatedAt: '2026-09-20T08:00:00.000Z' }], [],
+        new Date('2026-09-21T08:00:00.000Z'));
+      assert.strictEqual(d.stalled, false);
+    });
+
+    // یادداشتِ دفترچه هم «تکان» است: پروژه‌ای که فقط حرفش را زده‌ای زنده است
+    t('راکد: یادداشتِ تازه در دفترچه پروژه را زنده نگه می‌دارد', () => {
+      const d = Store.projectDossier('p1',
+        [{ id: 'p1', name: 'x', stage: 'active', createdAt: '2026-08-01T08:00:00.000Z',
+           log: [{ id: 'a', at: '2026-09-19T08:00:00.000Z', text: 'زنگ زدم' }] }], [], [],
+        new Date('2026-09-21T08:00:00.000Z'));
+      assert.strictEqual(d.stalled, false);
+    });
+
     // ── بورس ─────────────────────────────────────────────
     // سطرها از پاسخِ واقعیِ cdn.tsetmc.com برداشته شده‌اند: py قیمت دیروز،
     // pcl پایانی، pdv آخرین معامله، qtj حجم، ztt تعداد معامله، hEven ساعت.
@@ -3624,11 +3725,12 @@ t('peopleFiles گروه‌بندی درست', () => {
       assert.strictEqual(d.people.find(p => p.name === 'نگار').open, 1, 'یک کارِ باز دارد');
     });
 
-    t('پروژهٔ بی‌کارِ باز راکد علامت می‌خورد', () => {
-      const empty = Store.projectDossier(kid.id, projects, tasks.filter(x => x.projectId !== kid.id), sessions, now);
-      assert.ok(empty.stalled === false || empty.counts.open === 0);
+    t('راکدی از سکوت می‌آید، نه از نبودِ کار', () => {
       const noneAtAll = Store.projectDossier(kid.id, projects, [], sessions, now);
-      assert.strictEqual(noneAtAll.stalled, false, 'پروژهٔ کاملاً خالی راکد نیست، تازه است');
+      // همان نکتهٔ درستِ قبلی: خالی‌بودن به‌تنهایی راکدی نیست. حالا معیار
+      // این است که چند وقت است هیچ اتفاقی نیفتاده.
+      assert.strictEqual(typeof noneAtAll.daysSinceTouch, 'number');
+      assert.strictEqual(noneAtAll.stalled, noneAtAll.daysSinceTouch >= Store.STALL_DAYS);
     });
 
     t('مرحله پیش‌فرض دارد و مقدارِ نامعتبر را نمی‌پذیرد', async () => {

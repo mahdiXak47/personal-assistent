@@ -46,6 +46,11 @@
       <span>کارها</span>
       <span class="rail-badge" id="openCount" hidden></span>
     </button>
+    <button class="rail-item" data-view="projects">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 7.2a2 2 0 0 1 2-2h3.4l2 2.4h7.6a2 2 0 0 1 2 2v8.2a2 2 0 0 1-2 2H5.5a2 2 0 0 1-2-2z"/><path d="M8 13.4h8"/></svg>
+      <span>پروژه‌ها</span>
+      <span class="rail-badge" id="stalledCount" hidden></span>
+    </button>
     <button class="rail-item" data-view="people">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="9.2" cy="8.2" r="3.4"/><path d="M2.8 20a6.4 6.4 0 0 1 12.8 0"/><path d="M16.2 5.4a3.4 3.4 0 0 1 0 5.6"/><path d="M17.4 20a6.4 6.4 0 0 0-2.6-5.1"/></svg>
       <span>آدم‌ها</span>
@@ -274,9 +279,22 @@
 </section>
 
 <!-- ═══════════ کارها ═══════════ -->
-<section id="view-tasks" class="view">
-  <!-- پروندهٔ پروژه — روی خودِ نمای کارها می‌نشیند، نه یک تبِ نهم -->
+<section id="view-projects" class="view">
+  <!-- پروندهٔ یک پروژه؛ وقتی باز است، فهرست پنهان می‌شود -->
   <div id="projPage" hidden></div>
+  <div id="projListWrap">
+    <div class="report-head">
+      <div>
+        <h1>پروژه‌ها</h1>
+        <p class="report-range" id="projStats"></p>
+      </div>
+      <button class="btn btn-primary btn-sm" id="projNewTop">پروژهٔ تازه</button>
+    </div>
+    <div id="projGroups"></div>
+  </div>
+</section>
+
+<section id="view-tasks" class="view">
   <div id="tasksMain">
   <div class="report-head">
     <div>

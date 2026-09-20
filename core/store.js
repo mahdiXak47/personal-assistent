@@ -354,6 +354,61 @@ const Store = (() => {
   }
 
   // درختِ دوسطحی برای نمایش، با شمارِ کارهای باز
+  // ── دفترچهٔ پروژه ────────────────────────────────────
+  // در منشی تقریباً همه‌چیز استنتاج می‌شود: آدم‌ها از زیرنویس، کارِ بعدی از
+  // امتیازدهی. دفترچه تنها جایی است که خودِ کاربر می‌گوید چه شد — و دقیقاً در
+  // آغازِ پروژه لازم است، وقتی هنوز نه کاری هست نه جلسه‌ای که استنتاج شود.
+  const PROJ_NOTE_MAX = 4000;
+  // دو هفته سکوت یعنی پروژه از دست رفته، نه اینکه کُند پیش می‌رود
+  const STALL_DAYS = 14;
+
+  function projectNotes(p) {
+    if (!p || !Array.isArray(p.log)) return [];
+    // تازه‌ترین بالا. reverse پیش از مرتب‌سازی لازم است: sort پایدار است، پس
+    // دو یادداشتِ هم‌زمان به ترتیبِ ثبت می‌مانند — و ما تازه‌ترین را می‌خواهیم.
+    return p.log
+      .filter(n => n && n.text)
+      .map(n => ({ id: n.id || noteId(), at: n.at || null, text: String(n.text) }))
+      .reverse()
+      .sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')));
+  }
+
+  async function addProjectNote(projectId, text) {
+    const body = String(text || '').trim().slice(0, PROJ_NOTE_MAX);
+    if (!body) return null;
+    const list = await getProjects();
+    const p = list.find(x => x.id === projectId);
+    if (!p) return null;
+    if (!Array.isArray(p.log)) p.log = [];
+    const entry = { id: noteId(), at: new Date().toISOString(), text: body };
+    p.log.push(entry);
+    await saveProjects(list);
+    return entry;
+  }
+
+  async function removeProjectNote(projectId, entryId) {
+    const list = await getProjects();
+    const p = list.find(x => x.id === projectId);
+    if (!p || !Array.isArray(p.log)) return null;
+    const idx = p.log.findIndex(n => n && n.id === entryId);
+    if (idx === -1) return null;
+    const [gone] = p.log.splice(idx, 1);
+    await saveProjects(list);
+    return gone;
+  }
+
+  // آخرین باری که این پروژه «تکان خورد» — از هر منبعی که باشد. بدون این،
+  // پروژه‌ای که هنوز کار و جلسه ندارد هیچ نشانهٔ حیاتی ندارد.
+  function lastTouch(project, tasks, meetings) {
+    const times = [];
+    const push = (v) => { const t = v ? new Date(v).getTime() : NaN; if (Number.isFinite(t)) times.push(t); };
+    for (const n of projectNotes(project)) push(n.at);
+    for (const m of (meetings || [])) push(m.startedAt);
+    for (const t of (tasks || [])) { push(t.updatedAt); push(t.doneAt); }
+    push(project && project.createdAt);
+    return times.length ? new Date(Math.max(...times)).toISOString() : null;
+  }
+
   function projectTree(projects, tasks) {
     const openCount = new Map();
     for (const t of tasks || []) {
@@ -449,6 +504,7 @@ const Store = (() => {
     const lastMeeting = meetings[0] || null;
     const DAYMS = 86400000;
     const daysSince = ts => ts ? Math.floor((now - new Date(ts)) / DAYMS) : null;
+    const touchedAt = lastTouch(p, own, meetings);
 
     return {
       project: p,
@@ -465,8 +521,15 @@ const Store = (() => {
       lastMeetingAt: lastMeeting ? lastMeeting.startedAt : null,
       daysSinceMeeting: daysSince(lastMeeting && lastMeeting.startedAt),
       people: [...people.values()].sort((a, b) => b.open - a.open || (b.lastAt || 0) - (a.lastAt || 0)),
-      // پروژه‌ای که کارِ بازی ندارد ولی تمام‌شده هم اعلام نشده، راکد است
-      stalled: p.stage !== 'done' && open.length === 0 && own.length > 0
+      log: projectNotes(p),
+      lastTouchAt: touchedAt,
+      daysSinceTouch: daysSince(touchedAt),
+      // راکدی مسئلهٔ زمان است، نه شمارشِ کار. شرطِ قبلی «کارِ باز ندارد» بود و
+      // دو جا اشتباه می‌کرد: پروژهٔ خالی را هرگز نمی‌دید (چون own.length>0 لازم
+      // بود)، و پروژه‌ای با کارِ بازی که یک ماه دست نخورده بود را سالم می‌شمرد.
+      // «ایده» هنوز شروع نشده و «تمام‌شده» تمام شده؛ هیچ‌کدام راکد نیستند.
+      stalled: p.stage !== 'done' && p.stage !== 'idea'
+        && daysSince(touchedAt) != null && daysSince(touchedAt) >= STALL_DAYS
     };
   }
 
@@ -1468,7 +1531,8 @@ const Store = (() => {
     getTasks, addTask, updateTask, toggleDone, removeTask, restoreTask, reorderTasks,
     PRIORITIES, PRIORITY_FA, PROJECT_COLORS, NOTE_MAX,
     noteEntries, addNote, removeNote,
-    PROJECT_STAGES,
+    PROJECT_STAGES, PROJ_NOTE_MAX, STALL_DAYS,
+    projectNotes, addProjectNote, removeProjectNote, lastTouch,
     getProjects, saveProject, removeProject, projectTree, projectMeetingRefs,
     projectDossier, setTaskProject, sessionProject, setSessionProject,
     touchTask, nudgeTask, taskScore, scoreReason, followupState, followups, staleTasks, fitsInSlot,
