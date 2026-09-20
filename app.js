@@ -2303,6 +2303,9 @@
         if (!entry) { toast('چیزی ننوشتی'); return; }
         input.value = '';
         await renderAll();
+        // صفحه از نو ساخته می‌شود، پس فوکوس روی جعبهٔ تازه برمی‌گردد تا
+        // بتوانی پشتِ‌هم بنویسی بدون اینکه دوباره کلیک کنی
+        $('#projPage .proj-log-input')?.focus();
         toast('در دفترچه ثبت شد');
       });
       sec.append(form);
@@ -6140,6 +6143,11 @@
     renderMeetings(events, tasks);
     renderFollowups(tasks);
     renderTasksView();
+    // نمای پروژه‌ها هم باید تازه شود. بدون این، یادداشتِ تازه تا وقتی از بخش
+    // بیرون نروی و برنگردی دیده نمی‌شد — همین‌طور تغییر مرحله و حذف یادداشت.
+    // await لازم است: فراخوان‌ها بعد از renderAll روی DOMِ تازه کار می‌کنند
+    // (مثلاً برگرداندنِ فوکوس به جعبهٔ دفترچه، که وگرنه روی عنصرِ دورریخته می‌نشست)
+    if ($('#view-projects')?.classList.contains('is-active')) await renderProjects();
     renderDayEnd(tasks, settings);
     weatherOn = !!settings.weatherOn;
     weatherCities = (settings.weatherCities || []).length ? settings.weatherCities : ['تهران'];
