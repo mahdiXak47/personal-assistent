@@ -5354,10 +5354,10 @@
   }
 
   async function snapshotNow(mode) {
-    const [sessions, tasks, people] = await Promise.all([
-      Store.getSessions(), Store.getTasks(), Store.getPeopleMeta()
+    const [sessions, tasks, people, projects] = await Promise.all([
+      Store.getSessions(), Store.getTasks(), Store.getPeopleMeta(), Store.getProjects()
     ]);
-    return Snapshot.buildSnapshot({ sessions, tasks, people }, { mode });
+    return Snapshot.buildSnapshot({ sessions, tasks, people, projects }, { mode });
   }
 
   let writingSnap = false;
@@ -5953,7 +5953,7 @@
   // برای کارهایی که اول باید یک نفر/جلسه انتخاب شود، شمارش معنا ندارد.
   function recipeCount(r) {
     if (r.custom) return null;
-    if (r.scope === 'person' || r.scope === 'session') return null;
+    if (r.scope === 'person' || r.scope === 'session' || r.scope === 'project') return null;
     const c = Snapshot.counts(ctxData, { scope: r.scope });
     const bits = [];
     if (c.meetings) bits.push(faNum(c.meetings) + ' جلسه');
@@ -6003,14 +6003,17 @@
     if (!ctxData) return;
     const scope = $('#ctxScope').value, mode = $('#ctxMode').value;
     const needsSession = scope === 'session', needsPerson = scope === 'person';
+    const needsProject = scope === 'project';
     $('#ctxSessionWrap').hidden = !needsSession;
     $('#ctxPersonWrap').hidden = !needsPerson;
-    $('#ctxPicker').hidden = !needsSession && !needsPerson;
+    $('#ctxProjectWrap').hidden = !needsProject;
+    $('#ctxPicker').hidden = !needsSession && !needsPerson && !needsProject;
     $('#ctxWarn').hidden = mode !== 'full';
 
     const r = Snapshot.buildContext(ctxData, {
       scope, mode, ask: ctxRecipe.ask,
-      id: $('#ctxSession').value, name: $('#ctxPerson').value
+      id: scope === 'project' ? $('#ctxProject').value : $('#ctxSession').value,
+      name: $('#ctxPerson').value
     });
     ctxText = r.text;
 
@@ -6048,8 +6051,16 @@
   }
 
   async function openCtxModal() {
-    const [sessions, tasks] = await Promise.all([Store.getSessions(), Store.getTasks()]);
-    ctxData = { sessions, tasks };
+    const [sessions, tasks, projects] = await Promise.all([
+      Store.getSessions(), Store.getTasks(), Store.getProjects()
+    ]);
+    ctxData = { sessions, tasks, projects };
+
+    const pj = $('#ctxProject');
+    pj.textContent = '';
+    (projects || []).filter(p => p && !p.archived)
+      .sort((a, b) => String(a.name).localeCompare(String(b.name), 'fa'))
+      .forEach(p => { const o = el('option', null, p.name); o.value = p.id; pj.append(o); });
 
     const ss = $('#ctxSession');
     ss.textContent = '';

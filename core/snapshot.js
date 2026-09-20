@@ -19,11 +19,11 @@ const Snapshot = (() => {
   const SCHEMA = 1;
   const MODES = ['meta', 'mom', 'full'];
   const MODE_LABEL = { meta: 'فقط فراداده', mom: 'صورت‌جلسه', full: 'متن کامل' };
-  const SCOPES = ['today', 'week', 'month', 'open', 'unanalyzed', 'session', 'person'];
+  const SCOPES = ['today', 'week', 'month', 'open', 'unanalyzed', 'session', 'person', 'project'];
   const SCOPE_LABEL = {
     today: 'امروز', week: 'هفتهٔ گذشته', month: 'ماه گذشته',
     open: 'کارهای باز', unanalyzed: 'جلسه‌های بدون صورت‌جلسه',
-    session: 'یک جلسه', person: 'یک نفر'
+    session: 'یک جلسه', person: 'یک نفر', project: 'یک پروژه'
   };
 
   // ── کارهای آماده ────────────────────────────────────
@@ -65,6 +65,13 @@ const Snapshot = (() => {
       hint: 'متن کاملِ یک جلسهٔ مشخص',
       scope: 'session', mode: 'full',
       ask: 'این جلسه را خلاصه کن، تصمیم‌ها و کارها را دربیاور، و بگو چه چیزی بی‌جواب ماند و باید پیگیری شود.'
+    },
+    {
+      id: 'projectBrief',
+      title: 'برای یک پروژه آماده‌ام کن',
+      hint: 'هدف، دفترچه، کارها و جلسه‌های یک پروژه',
+      scope: 'project', mode: 'mom',
+      ask: 'وضعیت این پروژه را جمع‌بندی کن: کجا ایستاده، چه چیزی عقب مانده، و قدمِ بعدی چه باید باشد. اگر جلسه‌ای در پیش است، سه سؤال یا نکته‌ای که بهتر است مطرح کنم هم بنویس.'
     },
     {
       id: 'custom',
@@ -378,10 +385,20 @@ const Snapshot = (() => {
         meetings: sessions.length,
         tasks: tasks.length,
         openTasks: tasks.filter(t => t && t.status !== 'done').length,
-        unanalyzed: sessions.filter(s => !isAnalyzed(s)).length
+        unanalyzed: sessions.filter(s => !isAnalyzed(s)).length,
+        projects: ((data && data.projects) || []).filter(p => p && p.id && !p.archived).length
       },
       meetings: sessions.map(s => slimSession(s || {}, mode)),
       tasks: tasks.map(t => slimTask(t || {}, mode)),
+      projects: ((data && data.projects) || []).filter(p => p && p.id && !p.archived).map(p => {
+        const row = { id: p.id, name: clean(p.name), stage: p.stage || 'active' };
+        if (mode !== 'meta') {
+          if (p.goal) row.goal = clean(p.goal);
+          const log = Array.isArray(p.log) ? p.log.filter(n => n && n.text) : [];
+          if (log.length) row.log = log.map(n => ({ at: n.at || null, text: clean(n.text) }));
+        }
+        return row;
+      }),
       people: Object.keys(people).map(name => {
         const p = people[name] || {};
         const row = { name };
@@ -398,8 +415,18 @@ const Snapshot = (() => {
     return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
   }
 
-  function pickSessions(sessions, scope, o, now) {
+  // دو راه به یک جلسه — همان منطقِ پروندهٔ پروژه: یا کاری از آن جلسه به این
+  // پروژه وصل است، یا خودِ جلسه صریح به پروژه نسبت داده شده.
+  function projectSessions(list, tasks, projectId) {
+    const refs = new Set((tasks || [])
+      .filter(t => t && t.projectId === projectId && t.meetingRef)
+      .map(t => t.meetingRef));
+    return list.filter(s => refs.has(s.id) || s.projectId === projectId);
+  }
+
+  function pickSessions(sessions, scope, o, now, data) {
     const all = (sessions || []).filter(Boolean);
+    if (scope === 'project') return projectSessions(all, (data && data.tasks) || [], o.id);
     if (scope === 'session') return all.filter(s => s.id === o.id);
     if (scope === 'person') {
       const want = norm(o.name);
@@ -416,6 +443,8 @@ const Snapshot = (() => {
   function pickTasks(tasks, scope, o, now) {
     const all = (tasks || []).filter(Boolean);
     const open = t => t.status !== 'done';
+    // کارهای پروژه همه می‌آیند، باز و بسته — تاریخچه بخشی از وضعیت است
+    if (scope === 'project') return all.filter(t => t.projectId === o.id);
     if (scope === 'session') return all.filter(t => t.meetingRef === o.id);
     if (scope === 'person') {
       const want = norm(o.name);
@@ -436,7 +465,7 @@ const Snapshot = (() => {
     const now = o.now || Date.now();
     const scope = SCOPES.includes(o.scope) ? o.scope : 'week';
     return {
-      meetings: pickSessions((data && data.sessions) || [], scope, o, now).length,
+      meetings: pickSessions((data && data.sessions) || [], scope, o, now, data).length,
       tasks: pickTasks((data && data.tasks) || [], scope, o, now).length
     };
   }
@@ -495,7 +524,7 @@ const Snapshot = (() => {
     const scope = SCOPES.includes(o.scope) ? o.scope : 'week';
     const budget = Math.max(2000, o.budget || 48000);
 
-    const sessions = pickSessions((data && data.sessions) || [], scope, o, now)
+    const sessions = pickSessions((data && data.sessions) || [], scope, o, now, data)
       .sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0));
     const tasks = pickTasks((data && data.tasks) || [], scope, o, now);
     const unanalyzed = sessions.filter(s => !isAnalyzed(s)).length;
@@ -507,8 +536,12 @@ const Snapshot = (() => {
     // دستوری که *بعد* از داده بیاید بهتر دنبال می‌شود.
     if (ask) head.push('دادهٔ زیر از «منشی» است — جلسه‌ها و کارهای من. درخواستم ته همین متن آمده.', '');
     head.push('تاریخ خروجی: ' + dateLabel(now));
+    const project = scope === 'project'
+      ? ((data && data.projects) || []).find(p => p && p.id === o.id) || null
+      : null;
     let scopeText = SCOPE_LABEL[scope] || scope;
     if (scope === 'person' && o.name) scopeText += ' (' + clean(o.name) + ')';
+    if (project) scopeText += ' (' + clean(project.name) + ')';
     head.push('دامنه: ' + scopeText);
     head.push('سطح: ' + (MODE_LABEL[mode] || mode));
 
@@ -521,6 +554,22 @@ const Snapshot = (() => {
 
     let out = head.join('\n') + '\n';
     let omitted = 0;
+
+    // خودِ پروژه پیش از کارها و جلسه‌ها می‌آید: هدف و دفترچه چیزی‌اند که از
+    // جای دیگری استنتاج نمی‌شوند، و بدونشان مدل فقط فهرستی از کار می‌بیند.
+    if (project) {
+      out += '\n# پروژه: ' + clean(project.name) + '\n\n';
+      const stageFa = { idea: 'ایده', active: 'در جریان', waiting: 'منتظر', done: 'تمام‌شده' };
+      out += '- مرحله: ' + (stageFa[project.stage] || project.stage || 'در جریان') + '\n';
+      if (project.goal) out += '- هدف: ' + clean(project.goal) + '\n';
+      const log = Array.isArray(project.log) ? project.log.filter(n => n && n.text) : [];
+      if (log.length && mode !== 'meta') {
+        out += '\n## دفترچه (از قدیم به جدید)\n\n';
+        for (const n of log) {
+          out += '- ' + (n.at ? dateLabel(new Date(n.at).getTime()) + ' — ' : '') + clean(n.text) + '\n';
+        }
+      }
+    }
 
     if (sessions.length) {
       out += '\n# جلسه‌ها\n\n';

@@ -1389,6 +1389,80 @@ t('peopleFiles گروه‌بندی درست', () => {
       assert.ok(/شنیده نشد/.test(warn.text), warn.text);
     });
 
+    // ── پروژه در «بپرس از AI» ────────────────────────────
+    {
+      const Snap = require('../core/snapshot.js');
+      const proj = { id: 'p1', name: 'دیجی‌کالا', stage: 'active', goal: 'دیلی راه بیفتد',
+        log: [{ id: 'a', at: '2026-09-18T08:00:00.000Z', text: 'زنگ زدم، گفتند بعد از عید' }] };
+      const data = {
+        projects: [proj, { id: 'p2', name: 'آرشیوی', stage: 'done', archived: true }],
+        tasks: [
+          { id: 't1', title: 'دستور جلسه', status: 'open', projectId: 'p1', meetingRef: 's1' },
+          { id: 't2', title: 'بی‌ربط', status: 'open', projectId: null }
+        ],
+        sessions: [
+          { id: 's1', title: 'جلسهٔ اول', startedAt: 1789000000000, summary: 'خلاصه' },
+          { id: 's2', title: 'جلسهٔ نسبت‌داده‌شده', startedAt: 1789100000000, projectId: 'p1' },
+          { id: 's3', title: 'بی‌ربط', startedAt: 1789200000000 }
+        ],
+        people: {}
+      };
+
+      t('AI: دامنهٔ پروژه فقط کارهای همان پروژه را می‌گیرد', () => {
+        const c = Snap.counts(data, { scope: 'project', id: 'p1' });
+        assert.strictEqual(c.tasks, 1);
+      });
+
+      // دو راه به یک جلسه: از راهِ کار، و نسبت‌دادنِ صریح
+      t('AI: جلسه‌ها از هر دو راه پیدا می‌شوند', () => {
+        const got = Snap._pickSessions(data.sessions, 'project', { id: 'p1' }, Date.now(), data);
+        assert.deepStrictEqual(got.map(s => s.id).sort(), ['s1', 's2']);
+      });
+
+      t('AI: هدف و دفترچه در متنِ زمینه می‌آیند', () => {
+        const r = Snap.buildContext(data, { scope: 'project', id: 'p1', mode: 'mom', ask: 'وضعیت؟' });
+        assert.ok(r.text.includes('# پروژه: دیجی‌کالا'), 'سربرگ پروژه');
+        assert.ok(r.text.includes('هدف: دیلی راه بیفتد'), 'هدف');
+        assert.ok(r.text.includes('زنگ زدم، گفتند بعد از عید'), 'دفترچه');
+        assert.ok(r.text.includes('دامنه: یک پروژه (دیجی‌کالا)'), 'نامِ پروژه در دامنه');
+        assert.strictEqual(r.empty, false);
+      });
+
+      // در سطحِ «فقط فراداده» دفترچه نباید برود — متنی است که خودت نوشته‌ای
+      t('AI: در سطح فراداده، دفترچه نمی‌رود', () => {
+        const r = Snap.buildContext(data, { scope: 'project', id: 'p1', mode: 'meta' });
+        assert.ok(r.text.includes('# پروژه: دیجی‌کالا'));
+        assert.ok(!r.text.includes('زنگ زدم'), 'دفترچه نباید در فراداده باشد');
+      });
+
+      t('AI: فایلِ snapshot پروژه‌ها را دارد، بدونِ آرشیوی‌ها', () => {
+        const snap = Snap.buildSnapshot(data, { mode: 'mom' });
+        assert.deepStrictEqual(snap.projects.map(p => p.name), ['دیجی‌کالا']);
+        assert.strictEqual(snap.projects[0].goal, 'دیلی راه بیفتد');
+        assert.strictEqual(snap.projects[0].log.length, 1);
+        assert.strictEqual(snap.counts.projects, 1);
+      });
+
+      t('AI: در فایلِ فراداده، هدف و دفترچه نمی‌آیند', () => {
+        const snap = Snap.buildSnapshot(data, { mode: 'meta' });
+        assert.strictEqual(snap.projects[0].goal, undefined);
+        assert.strictEqual(snap.projects[0].log, undefined);
+        assert.strictEqual(snap.projects[0].name, 'دیجی‌کالا');
+      });
+
+      t('AI: دستورِ «برای یک پروژه آماده‌ام کن» هست و دامنه‌اش درست است', () => {
+        const r = Snap.recipeById('projectBrief');
+        assert.ok(r, 'دستور پیدا نشد');
+        assert.strictEqual(r.scope, 'project');
+        assert.ok(r.ask.length > 20);
+      });
+
+      t('AI: پروژهٔ ناموجود خالی برمی‌گردد، نه اینکه همه‌چیز را بفرستد', () => {
+        const r = Snap.buildContext(data, { scope: 'project', id: 'نیست', mode: 'mom' });
+        assert.strictEqual(r.empty, true);
+      });
+    }
+
     // ── هدف و آرشیو ──────────────────────────────────────
     t('هدف: ذخیره می‌شود و سقفِ طول دارد', async () => {
       const p = await Store.saveProject({ name: 'هدف‌دار', goal: 'دیلی راه بیفتد' });
