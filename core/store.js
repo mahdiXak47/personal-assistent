@@ -296,6 +296,9 @@ const Store = (() => {
   ];
   const STAGE_IDS = PROJECT_STAGES.map(x => x.id);
   const PROJ_NAME_MAX = 60;
+  // یک جمله، نه یک پاراگراف: «این پروژه وقتی تمام است که…». بدون این، انتخابگرِ
+  // مرحله معنای دقیقی ندارد — از کجا می‌فهمی «تمام‌شده» است؟
+  const PROJ_GOAL_MAX = 200;
   const newProjectId = () => 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
   async function getProjects() {
@@ -322,9 +325,10 @@ const Store = (() => {
 
     const clean = {
       id, name, parentId,
+      goal: String(data.goal != null ? data.goal : (existing && existing.goal) || '').trim().slice(0, PROJ_GOAL_MAX),
       stage: STAGE_IDS.includes(data.stage) ? data.stage : (existing && existing.stage) || 'active',
       color: PROJECT_COLORS.includes(data.color) ? data.color : (existing && existing.color) || PROJECT_COLORS[list.length % PROJECT_COLORS.length],
-      archived: !!data.archived,
+      archived: data.archived != null ? !!data.archived : !!(existing && existing.archived),
       createdAt: (existing && existing.createdAt) || new Date().toISOString()
     };
     if (existing) Object.assign(existing, clean); else list.push(clean);
@@ -334,6 +338,17 @@ const Store = (() => {
 
   // حذفِ پروژه هرگز کار را حذف نمی‌کند — فقط بی‌پروژه‌شان می‌کند.
   // زیرپروژه‌ها هم یک سطح بالا می‌آیند، نه اینکه یتیم شوند.
+  async function archiveProject(id, archived = true) {
+    const list = await getProjects();
+    const p = list.find(x => x.id === id);
+    if (!p) return null;
+    p.archived = !!archived;
+    // زیرپروژه‌ها هم با والد می‌روند، وگرنه یتیم و نامرئی می‌مانند
+    for (const c of list) if (c.parentId === id) c.archived = !!archived;
+    await saveProjects(list);
+    return p;
+  }
+
   async function removeProject(id) {
     const list = await getProjects();
     const gone = list.find(p => p.id === id);
@@ -1533,7 +1548,8 @@ const Store = (() => {
     noteEntries, addNote, removeNote,
     PROJECT_STAGES, PROJ_NOTE_MAX, STALL_DAYS,
     projectNotes, addProjectNote, removeProjectNote, lastTouch,
-    getProjects, saveProject, removeProject, projectTree, projectMeetingRefs,
+    getProjects, saveProject, removeProject, archiveProject, projectTree, projectMeetingRefs,
+    PROJ_GOAL_MAX, PROJ_NAME_MAX,
     projectDossier, setTaskProject, sessionProject, setSessionProject,
     touchTask, nudgeTask, taskScore, scoreReason, followupState, followups, staleTasks, fitsInSlot,
     addSubtask, updateSubtask, toggleSubtask, removeSubtask,

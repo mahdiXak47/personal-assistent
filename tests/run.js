@@ -1389,6 +1389,43 @@ t('peopleFiles گروه‌بندی درست', () => {
       assert.ok(/شنیده نشد/.test(warn.text), warn.text);
     });
 
+    // ── هدف و آرشیو ──────────────────────────────────────
+    t('هدف: ذخیره می‌شود و سقفِ طول دارد', async () => {
+      const p = await Store.saveProject({ name: 'هدف‌دار', goal: 'دیلی راه بیفتد' });
+      assert.strictEqual(p.goal, 'دیلی راه بیفتد');
+      const long = await Store.saveProject({ id: p.id, name: p.name, goal: 'x'.repeat(500) });
+      assert.strictEqual(long.goal.length, Store.PROJ_GOAL_MAX);
+    });
+
+    t('هدف: ذخیرهٔ بدونِ هدف، هدفِ قبلی را پاک نمی‌کند', async () => {
+      const p = await Store.saveProject({ name: 'پایدار', goal: 'همین بماند' });
+      const again = await Store.saveProject({ id: p.id, name: 'پایدار', stage: 'waiting' });
+      assert.strictEqual(again.goal, 'همین بماند');
+    });
+
+    // پیش‌تر archived با هر ذخیرهٔ دیگری بی‌صدا false می‌شد و پروژهٔ آرشیوشده
+    // خودبه‌خود برمی‌گشت
+    t('آرشیو: ذخیرهٔ بدونِ archived وضعیتش را برنمی‌گرداند', async () => {
+      const p = await Store.saveProject({ name: 'بایگانی' });
+      await Store.archiveProject(p.id, true);
+      const after = await Store.saveProject({ id: p.id, name: 'بایگانی', stage: 'done' });
+      assert.strictEqual(after.archived, true);
+    });
+
+    t('آرشیو: زیرپروژه‌ها با والد می‌روند و با او برمی‌گردند', async () => {
+      const par = await Store.saveProject({ name: 'والد' });
+      const kid = await Store.saveProject({ name: 'فرزند', parentId: par.id });
+      await Store.archiveProject(par.id, true);
+      let list = await Store.getProjects();
+      assert.strictEqual(list.find(x => x.id === kid.id).archived, true, 'فرزند نباید یتیم و نامرئی بماند');
+      await Store.archiveProject(par.id, false);
+      list = await Store.getProjects();
+      assert.strictEqual(list.find(x => x.id === kid.id).archived, false);
+    });
+
+    t('آرشیو: پروژهٔ ناموجود خطا نمی‌دهد', async () =>
+      assert.strictEqual(await Store.archiveProject('نیست'), null));
+
     // ── دفترچهٔ پروژه و «آخرین تکان» ─────────────────────
     t('دفترچه: تازه‌ترین یادداشت بالا می‌نشیند', () => {
       const p = { id: 'p1', name: 'دیجی‌کالا', log: [

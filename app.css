@@ -1518,6 +1518,38 @@ h4.mom-h { font-size: 14px; color: var(--text-2); }
 .proj-row-when.is-stalled { color: var(--amber); font-weight: 700; }
 .proj-row-flag { flex: none; font-size: 10.5px; font-weight: 800; color: var(--amber); background: var(--amber-soft); border-radius: 999px; padding: 2px 8px; }
 
+/* هدف: خطِ تعریفِ پایانِ پروژه */
+.proj-goal { display: flex; align-items: baseline; gap: 9px; margin-bottom: 9px; }
+.proj-goal-label { flex: none; font-size: 11.5px; font-weight: 800; color: var(--text-3); }
+.proj-goal-text {
+  flex: 1; min-width: 0; text-align: start; font: inherit; font-size: 13.5px; line-height: 1.8;
+  color: var(--text); background: none; border: 0; padding: 2px 4px; margin-inline-start: -4px;
+  border-radius: 6px; cursor: pointer; transition: background var(--dur) var(--ease);
+}
+.proj-goal-text:hover { background: var(--surface-2); }
+.proj-goal-text:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.proj-goal.is-empty .proj-goal-text { color: var(--text-3); }
+
+/* افزودن سریعِ کار داخلِ پروژه */
+.proj-task-add { display: flex; align-items: center; gap: 7px; margin-bottom: 11px; }
+.proj-task-add input { flex: 1; min-width: 0; }
+
+/* حذف رنگِ خطر دارد و کنارِ آرشیو نمی‌نشیند */
+.proj-del { color: var(--red); }
+.proj-del:hover { background: var(--red-soft); }
+
+/* آرشیو: جمع‌شده ته فهرست */
+.proj-archived { margin-top: 20px; }
+.proj-archived > summary {
+  cursor: pointer; font-size: 12px; font-weight: 800; color: var(--text-3);
+  padding: 6px 2px; list-style: none;
+}
+.proj-archived > summary::-webkit-details-marker { display: none; }
+.proj-archived > summary::before { content: '‹ '; display: inline-block; transition: transform var(--dur) var(--ease); }
+.proj-archived[open] > summary::before { transform: rotate(-90deg); }
+.proj-archived > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+.proj-row.is-archived { opacity: .62; }
+
 /* نوارِ آخرین تکان در خودِ پرونده */
 .proj-touch { display: flex; align-items: baseline; gap: 9px; padding: 9px 12px; margin-bottom: 12px;
   background: var(--surface-2); border-radius: var(--radius-sm); font-size: 13px; }

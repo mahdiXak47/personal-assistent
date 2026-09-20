@@ -2161,6 +2161,7 @@
 
     const sessions = await Store.getSessions();
     const now = new Date();
+    const archived = cachedProjects.filter(p => p && p.archived);
     const all = cachedProjects.filter(p => p && !p.archived);
     const dossiers = new Map(all.map(p => [p.id, Store.projectDossier(p.id, cachedProjects, cachedTasks, sessions, now)]));
 
@@ -2172,16 +2173,19 @@
     if (badge) { badge.hidden = !stalled; badge.textContent = J.faDigits(stalled); }
 
     wrap.replaceChildren();
+    // بدونِ return: اگر همهٔ پروژه‌ها آرشیو شده باشند، باز هم باید بخشِ آرشیو
+    // ساخته شود — وگرنه آرشیو راهِ یک‌طرفه می‌شود و هیچ راهی برای برگرداندن نمی‌ماند.
     if (!all.length) {
       const e = el('div', 'empty');
       e.innerHTML = ICONS.folder;
-      e.append(el('div', null, 'هنوز پروژه‌ای نساخته‌ای'));
-      e.append(el('div', 'hint', 'پروژه جایی است که یک رابطه یا ابتکار را جلو می‌بری — بزرگ‌تر از یک کار، و لازم نیست به جلسه‌ای وصل باشد.'));
-      const b = el('button', 'btn btn-primary btn-sm', 'اولین پروژه را بساز');
+      e.append(el('div', null, archived.length ? 'همهٔ پروژه‌هایت آرشیو شده‌اند' : 'هنوز پروژه‌ای نساخته‌ای'));
+      e.append(el('div', 'hint', archived.length
+        ? 'از بخشِ آرشیوِ پایین می‌توانی هرکدام را برگردانی.'
+        : 'پروژه جایی است که یک رابطه یا ابتکار را جلو می‌بری — بزرگ‌تر از یک کار، و لازم نیست به جلسه‌ای وصل باشد.'));
+      const b = el('button', 'btn btn-primary btn-sm', 'پروژهٔ تازه');
       b.addEventListener('click', () => $('#projNewTop').click());
       e.append(b);
       wrap.append(e);
-      return;
     }
 
     for (const st of Store.PROJECT_STAGES) {
@@ -2195,6 +2199,22 @@
       sec.append(h);
       for (const p of list) sec.append(projectRow(dossiers.get(p.id)));
       wrap.append(sec);
+    }
+
+    // آرشیوشده‌ها جمع‌شده ته فهرست: پنهان‌شان کنیم گم می‌شوند، بالا بیاوریم
+    // شلوغی است. <details> بومی است و حالتش را خودش نگه می‌دارد.
+    if (archived.length) {
+      const box = el('details', 'proj-archived');
+      const sum = document.createElement('summary');
+      sum.textContent = `آرشیو (${J.faDigits(archived.length)})`;
+      box.append(sum);
+      for (const p of archived) {
+        const d = Store.projectDossier(p.id, cachedProjects, cachedTasks, sessions, now);
+        const row = projectRow(d);
+        row.classList.add('is-archived');
+        box.append(row);
+      }
+      wrap.append(box);
     }
   }
 
@@ -2241,7 +2261,52 @@
       toast('مرحله: ' + (Store.PROJECT_STAGES.find(x => x.id === stageSel.value) || {}).name);
     });
     head.append(stageSel);
+
+    // آرشیو و حذف: تا امروز هیچ راهی نبود، پس پروژهٔ اشتباهی تا ابد می‌ماند.
+    // حذف کنارِ آرشیو نمی‌نشیند و رنگِ خطر دارد — کارِ برگشت‌ناپذیر باید جدا باشد.
+    const arch = el('button', 'btn btn-ghost btn-sm', p.archived ? 'بازگرداندن' : 'آرشیو');
+    arch.addEventListener('click', async () => {
+      await Store.archiveProject(p.id, !p.archived);
+      if (!p.archived) { openProjectId = null; }   // آرشیو‌شده از فهرست می‌رود؛ برگرد
+      await renderAll();
+      await renderProjects();
+      toast(p.archived ? 'برگشت به فهرست' : 'آرشیو شد');
+    });
+    head.append(arch);
+
+    const del = el('button', 'btn btn-ghost btn-sm proj-del', 'حذف');
+    del.addEventListener('click', async () => {
+      const kids = d.children.length;
+      const msg = `«${p.name}» حذف شود؟\n\nکارها و جلسه‌هایش پاک نمی‌شوند — فقط از این پروژه جدا می‌شوند.`
+        + (kids ? `\n${J.faDigits(kids)} زیرپروژه یک پله بالا می‌آید.` : '')
+        + '\n\nاین کار برگشت ندارد.';
+      if (!confirm(msg)) return;
+      await Store.removeProject(p.id);
+      openProjectId = null;
+      await renderAll();
+      await renderProjects();
+      toast('حذف شد');
+    });
+    head.append(del);
     box.append(head);
+
+    // ── هدف ──
+    // یک جمله که می‌گوید این پروژه کِی تمام است. بدونش «تمام‌شده» معیاری ندارد.
+    {
+      const goal = el('div', 'proj-goal' + (p.goal ? '' : ' is-empty'));
+      const txt = el('button', 'proj-goal-text', p.goal || 'هدف این پروژه چیست؟ (کلیک کن و بنویس)');
+      txt.type = 'button';
+      txt.title = 'ویرایش هدف';
+      txt.addEventListener('click', async () => {
+        const v = prompt('این پروژه وقتی تمام است که…', p.goal || '');
+        if (v === null) return;
+        await Store.saveProject({ ...p, goal: v });
+        await renderAll();
+        toast(v.trim() ? 'هدف ثبت شد' : 'هدف برداشته شد');
+      });
+      goal.append(el('span', 'proj-goal-label', 'هدف'), txt);
+      box.append(goal);
+    }
 
     // ── آخرین تکان ──
     // پیش از هر چیز: این پروژه زنده است یا از دست رفته؟
@@ -2380,6 +2445,40 @@
     // ── کارها ──
     const tsec = el('section', 'proj-sec');
     tsec.append(el('h2', 'proj-sec-h', 'کارها'));
+
+    // افزودنِ سریع همین‌جا. کارِ معمولی ساخته می‌شود و فقط projectId می‌گیرد —
+    // این فهرستِ کارِ دومی نیست، همان کارهاست که از اینجا هم ساخته می‌شود.
+    {
+      const qf = el('form', 'proj-task-add');
+      const qi = el('input', 'proj-log-input');
+      qi.type = 'text';
+      qi.placeholder = 'کارِ تازه در این پروژه… مثلاً: دستور جلسه را بفرست تا شنبه';
+      qi.setAttribute('aria-label', 'افزودن کار به این پروژه');
+      const chip = el('span', 'due-preview');
+      chip.hidden = true;
+      // همان تجزیهٔ طبیعیِ تاریخ که در «کارها» هست؛ پیش‌نمایشش را هم نشان بده
+      qi.addEventListener('input', () => {
+        const { due, recur } = DateParser.parse(qi.value);
+        const label = recur ? DateParser.recurLabel(recur) : due ? J.relLabel(due) : '';
+        chip.textContent = label;
+        chip.hidden = !label;
+      });
+      const qb = el('button', 'btn btn-primary btn-sm', 'افزودن');
+      qb.type = 'submit';
+      qf.append(qi, chip, qb);
+      qf.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const { title, due, recur, tags } = DateParser.parse(qi.value);
+        if (!title) { toast('چیزی ننوشتی'); return; }
+        await Store.addTask({ title, due, recur, tags, projectId: p.id, source: 'manual' });
+        qi.value = ''; chip.hidden = true;
+        await renderAll();
+        $('#projPage .proj-task-add input')?.focus();
+        toast(recur ? `ثبت شد — ${DateParser.recurLabel(recur)}` : due ? `ثبت شد — ${J.relLabel(due)}` : 'ثبت شد');
+      });
+      tsec.append(qf);
+    }
+
     const wrap = el('div', 'todo-list');
     if (d.tasks.mine.length) wrap.append(todoSection('کارِ من', sortTasks(d.tasks.mine, 'smart', now), 'today', now, false));
     if (d.tasks.theirs.length) wrap.append(todoSection('منتظرِ دیگران', sortTasks(d.tasks.theirs, 'due', now), 'theirs', now, false));
